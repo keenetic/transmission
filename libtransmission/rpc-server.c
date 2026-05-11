@@ -607,7 +607,7 @@ static bool ndm_login(struct tr_rpc_server* server, const bool is_local, const c
             /* Locally authenticated, do not cache an account data. */
             authenticated = true;
         }
-        else if (ndm_core_authenticate(server->core, username, password, "torrent", &authenticated) &&
+        else if (ndm_core_authenticate(server->core, "transmission", username, password, "torrent", &authenticated) &&
             authenticated)
         {
             u = tr_malloc(sizeof(*u));
@@ -1079,6 +1079,15 @@ static void startServer(void* vserver)
     }
 
     server->core = ndm_core_open("transmission/ci", NDM_LOCAL_AUTH_TIMEOUT_, NDM_CORE_CACHE_MAX_SIZE_);
+
+    bool authenticated = false;
+
+    if (!ndm_core_authenticate_local_service(
+         server->core, "transmission", true, &authenticated) ||
+        !authenticated)
+    {
+        ndm_core_close(&server->core);
+    }
 #endif
 
     rpc_server_start_retry_cancel(server);
