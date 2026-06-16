@@ -1919,7 +1919,18 @@ void tr_sessionSetPeerLimitPerTorrent(tr_session* session, uint16_t n)
 
 #endif
 
-    session->peerLimitPerTorrent = n;
+    if (session->peerLimitPerTorrent != n)
+    {
+        tr_torrent* tor = NULL;
+
+        session->peerLimitPerTorrent = n;
+
+        /* Keep already-added torrents in sync with the session-wide limit. */
+        while ((tor = tr_torrentNext(session, tor)) != NULL)
+        {
+            tr_torrentSetPeerLimit(tor, n);
+        }
+    }
 }
 
 uint16_t tr_sessionGetPeerLimitPerTorrent(tr_session const* session)

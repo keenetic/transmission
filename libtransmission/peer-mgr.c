@@ -2001,7 +2001,12 @@ static int getMaxPeerCount(tr_torrent const* tor)
 
 static int getPeerCount(tr_swarm const* s)
 {
-    return tr_ptrArraySize(&s->peers); /* + tr_ptrArraySize(&t->outgoingHandshakes); */
+    return tr_ptrArraySize(&s->peers);
+}
+
+static int getConnectionCount(tr_swarm const* s)
+{
+    return getPeerCount(s) + tr_ptrArraySize(&s->outgoingHandshakes);
 }
 
 static void createBitTorrentPeer(tr_torrent* tor, struct tr_peerIo* io, struct peer_atom* atom, tr_quark client)
@@ -2106,8 +2111,9 @@ static bool myHandshakeDoneCB(tr_handshake* handshake, tr_peerIo* io, bool readA
         {
             tordbg(s, "banned peer %s tried to reconnect", tr_atomAddrStr(atom));
         }
-        else if (tr_peerIoIsIncoming(io) && getPeerCount(s) >= getMaxPeerCount(s->tor))
+        else if (getConnectionCount(s) >= getMaxPeerCount(s->tor))
         {
+            tordbg(s, "dropping peer %s because the per-torrent peer limit has been reached", tr_atomAddrStr(atom));
         }
         else
         {
@@ -4287,8 +4293,8 @@ static struct peer_candidate* getPeerCandidates(tr_session* session, int* candid
             continue;
         }
 
-        /* if we've already got enough peers in this torrent... */
-        if (tr_torrentGetPeerLimit(tor) <= tr_ptrArraySize(&tor->swarm->peers))
+        /* if we've already got enough peers or pending connections in this torrent... */
+        if (tr_torrentGetPeerLimit(tor) <= getConnectionCount(tor->swarm))
         {
             continue;
         }
@@ -4377,7 +4383,14 @@ static void initiateCandidateConnection(tr_peerMgr* mgr, struct peer_candidate* 
 
 #endif
 
-    initiateConnection(mgr, c->tor->swarm, c->atom);
+    tr_swarm* s = c->tor->swarm;
+
+    if (getConnectionCount(s) >= getMaxPeerCount(c->tor))
+    {
+        return;
+    }
+
+    initiateConnection(mgr, s, c->atom);
 }
 
 static void makeNewPeerConnections(struct tr_peerMgr* mgr, int const max)

@@ -977,6 +977,12 @@ static void torrentInit(tr_torrent* tor, tr_ctor const* ctor)
     bool didRenameResumeFileToHashOnlyName = false;
     loaded = tr_torrentLoadResume(tor, ~0, ctor, &didRenameResumeFileToHashOnlyName);
 
+    if ((loaded & TR_FR_MAX_PEERS) != 0)
+    {
+        /* A saved resume value must not override the current session-wide per-torrent limit. */
+        tr_torrentSetPeerLimit(tor, tr_sessionGetPeerLimitPerTorrent(session));
+    }
+
     if (didRenameResumeFileToHashOnlyName)
     {
         /* Rename torrent file as well */
