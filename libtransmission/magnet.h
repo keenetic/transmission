@@ -17,7 +17,9 @@
 
 typedef struct tr_magnet_info
 {
-    uint8_t hash[20];
+    uint8_t hash[SHA_DIGEST_LENGTH];
+    uint8_t hash2[SHA256_DIGEST_LENGTH];
+    bool hasHash2;
 
     char* displayName;
 

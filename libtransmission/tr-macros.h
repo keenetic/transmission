@@ -169,6 +169,7 @@
 #define TR_DISCARD_ALIGN(ptr, type) ((type)(void*)(ptr))
 
 #define SHA_DIGEST_LENGTH 20
+#define SHA256_DIGEST_LENGTH 32
 
 #define TR_INET6_ADDRSTRLEN 46
 

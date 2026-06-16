@@ -417,6 +417,11 @@ char* tr_torrentInfoGetMagnetLink(tr_info const* inf)
 
     evbuffer_add_printf(s, "magnet:?xt=urn:btih:%s", inf->hashString);
 
+    if (inf->hasHash2)
+    {
+        evbuffer_add_printf(s, "&xt=urn:btmh:1220%s", inf->hashString2);
+    }
+
     name = inf->name;
 
     if (!tr_str_is_empty(name))

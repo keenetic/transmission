@@ -109,15 +109,29 @@ static void base32_to_sha1(uint8_t* out, char const* in, size_t const inlen)
 #define MAX_TRACKERS 64
 #define MAX_WEBSEEDS 64
 
+static tr_quark key_info_hash2(void)
+{
+    static tr_quark key = 0;
+
+    if (key == 0)
+    {
+        key = tr_quark_new("info_hash2", 10);
+    }
+
+    return key;
+}
+
 tr_magnet_info* tr_magnetParse(char const* uri)
 {
     bool got_checksum = false;
+    bool got_checksum2 = false;
     int trCount = 0;
     int wsCount = 0;
     char* tr[MAX_TRACKERS];
     char* ws[MAX_WEBSEEDS];
     char* displayName = NULL;
     uint8_t sha1[SHA_DIGEST_LENGTH];
+    uint8_t sha256[SHA256_DIGEST_LENGTH];
     tr_magnet_info* info = NULL;
 
     if (uri != NULL && strncmp(uri, "magnet:?", 8) == 0)
@@ -173,6 +187,17 @@ tr_magnet_info* tr_magnetParse(char const* uri)
                     got_checksum = true;
                 }
             }
+            else if (keylen == 2 && memcmp(key, "xt", 2) == 0 && val != NULL && strncmp(val, "urn:btmh:1220", 13) == 0)
+            {
+                char const* hash = val + 13;
+                size_t const hashlen = vallen - 13;
+
+                if (hashlen == 2 * SHA256_DIGEST_LENGTH)
+                {
+                    tr_hex_to_sha256(sha256, hash);
+                    got_checksum2 = true;
+                }
+            }
 
             if (displayName == NULL && vallen > 0 && keylen == 2 && memcmp(key, "dn", 2) == 0)
             {
@@ -211,6 +236,12 @@ tr_magnet_info* tr_magnetParse(char const* uri)
         info->webseedCount = wsCount;
         info->webseeds = tr_memdup(ws, sizeof(char*) * wsCount);
         memcpy(info->hash, sha1, sizeof(uint8_t) * SHA_DIGEST_LENGTH);
+
+        if (got_checksum2)
+        {
+            memcpy(info->hash2, sha256, sizeof(uint8_t) * SHA256_DIGEST_LENGTH);
+            info->hasHash2 = true;
+        }
     }
     else
     {
@@ -285,8 +316,13 @@ void tr_magnetCreateMetainfo(tr_magnet_info const* info, tr_variant* top)
     }
 
     /* nonstandard keys */
-    d = tr_variantDictAddDict(top, TR_KEY_magnet_info, 2);
-    tr_variantDictAddRaw(d, TR_KEY_info_hash, info->hash, 20);
+    d = tr_variantDictAddDict(top, TR_KEY_magnet_info, info->hasHash2 ? 3 : 2);
+    tr_variantDictAddRaw(d, TR_KEY_info_hash, info->hash, SHA_DIGEST_LENGTH);
+
+    if (info->hasHash2)
+    {
+        tr_variantDictAddRaw(d, key_info_hash2(), info->hash2, SHA256_DIGEST_LENGTH);
+    }
 
     if (info->displayName != NULL)
     {
