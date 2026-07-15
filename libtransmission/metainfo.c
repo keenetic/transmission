@@ -664,7 +664,22 @@ static char const* tr_metainfoParseImpl(tr_session const* session, tr_info* inf,
         size_t len;
         char* bstr = tr_variantToStr(infoDict, TR_VARIANT_FMT_BENC, &len);
 
-        inf->hasV2Metadata = (has_meta_version && meta_version == 2) || has_file_tree || has_piece_layers;
+        bool const declares_v2 = has_meta_version && meta_version == 2;
+        bool const has_any_v2_field = has_meta_version || has_file_tree || has_piece_layers;
+
+        if (has_any_v2_field && !declares_v2)
+        {
+            tr_free(bstr);
+            return "meta version";
+        }
+
+        if (declares_v2 && !has_file_tree)
+        {
+            tr_free(bstr);
+            return "file tree";
+        }
+
+        inf->hasV2Metadata = declares_v2;
 
         tr_sha1(inf->hash, bstr, (int)len, NULL);
         tr_sha1_to_hex(inf->hashString, inf->hash);
@@ -770,12 +785,7 @@ static char const* tr_metainfoParseImpl(tr_session const* session, tr_info* inf,
     {
         if (!tr_variantDictFindRaw(infoDict, TR_KEY_pieces, &raw, &len))
         {
-            if (inf->hasV2Metadata)
-            {
-                return "pieces (BEP52 v2-only torrents require v2 piece-layer verification; use a hybrid torrent)";
-            }
-
-            return "pieces";
+            return inf->hasV2Metadata ? "v2-only torrent is not supported; a hybrid torrent must contain v1 pieces" : "pieces";
         }
 
         if (len % SHA_DIGEST_LENGTH != 0)

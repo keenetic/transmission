@@ -65,6 +65,7 @@ set(${PROJECT_NAME}_SOURCES
     torrent.c
     torrent-ctor.c
     torrent-magnet.c
+    transmission.c
     tr-dht.c
     trevent.c
     tr-assert.c

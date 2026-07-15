@@ -500,7 +500,6 @@ void tr_ctorFree(tr_ctor* ctor)
 
 void tr_ctorSetSeedMode(tr_session* session, bool Mode)
 {
-    TR_ASSERT(tr_isBool(Mode));
 
     session->SeedMode = Mode;
 }
