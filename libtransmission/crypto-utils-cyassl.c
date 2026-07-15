@@ -24,6 +24,7 @@
 #include API_HEADER_CRYPT(error-crypt.h)
 #include API_HEADER_CRYPT(random.h)
 #include API_HEADER_CRYPT(sha.h)
+#include API_HEADER_CRYPT(sha256.h)
 #include API_HEADER(version.h)
 /* *INDENT-ON* */
 
@@ -168,6 +169,52 @@ bool tr_sha1_final(tr_sha1_ctx_t handle, uint8_t* hash)
         TR_ASSERT(handle != NULL);
 
         ret = check_result(API(ShaFinal)(handle, hash));
+    }
+
+    tr_free(handle);
+    return ret;
+}
+
+/***
+****
+***/
+
+tr_sha256_ctx_t tr_sha256_init(void)
+{
+    Sha256* handle = tr_new(Sha256, 1);
+
+    if (check_result(API(InitSha256)(handle)))
+    {
+        return handle;
+    }
+
+    tr_free(handle);
+    return NULL;
+}
+
+bool tr_sha256_update(tr_sha256_ctx_t handle, void const* data, size_t data_length)
+{
+    TR_ASSERT(handle != NULL);
+
+    if (data_length == 0)
+    {
+        return true;
+    }
+
+    TR_ASSERT(data != NULL);
+
+    return check_result(API(Sha256Update)(handle, data, data_length));
+}
+
+bool tr_sha256_final(tr_sha256_ctx_t handle, uint8_t* hash)
+{
+    bool ret = true;
+
+    if (hash != NULL)
+    {
+        TR_ASSERT(handle != NULL);
+
+        ret = check_result(API(Sha256Final)(handle, hash));
     }
 
     tr_free(handle);

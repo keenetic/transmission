@@ -580,6 +580,36 @@ static int testParse2(void)
     return 0;
 }
 
+
+static int testBinaryDictionaryKeys(void)
+{
+    static uint8_t const key1[] = { 0x01, 0x00, 0xff };
+    static uint8_t const key2[] = { 0x01, 0x00, 0xff, 0x00 };
+    static uint8_t const key3[] = { 0x01, 0x01 };
+    tr_variant top;
+    size_t len = 0;
+
+    tr_variantInitDict(&top, 3);
+    tr_variantDictAddInt(&top, tr_quark_new(key3, sizeof(key3)), 3);
+    tr_variantDictAddInt(&top, tr_quark_new(key2, sizeof(key2)), 2);
+    tr_variantDictAddInt(&top, tr_quark_new(key1, sizeof(key1)), 1);
+
+    char* const benc = tr_variantToStr(&top, TR_VARIANT_FMT_BENC, &len);
+    static uint8_t const expected[] =
+    {
+        'd', '3', ':', 0x01, 0x00, 0xff, 'i', '1', 'e',
+        '4', ':', 0x01, 0x00, 0xff, 0x00, 'i', '2', 'e',
+        '2', ':', 0x01, 0x01, 'i', '3', 'e', 'e'
+    };
+
+    check_uint(len, ==, sizeof(expected));
+    check_mem(benc, ==, expected, sizeof(expected));
+
+    tr_free(benc);
+    tr_variantFree(&top);
+    return 0;
+}
+
 int main(void)
 {
     static testFunc const tests[] =
@@ -591,6 +621,7 @@ int main(void)
         testMerge,
         testBool,
         testParse2,
+        testBinaryDictionaryKeys,
         testStackSmash
     };
 

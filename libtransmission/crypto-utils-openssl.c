@@ -176,6 +176,56 @@ bool tr_sha1_final(tr_sha1_ctx_t handle, uint8_t* hash)
 ****
 ***/
 
+tr_sha256_ctx_t tr_sha256_init(void)
+{
+    EVP_MD_CTX* handle = EVP_MD_CTX_create();
+
+    if (check_result(EVP_DigestInit_ex(handle, EVP_sha256(), NULL)))
+    {
+        return handle;
+    }
+
+    EVP_MD_CTX_destroy(handle);
+    return NULL;
+}
+
+bool tr_sha256_update(tr_sha256_ctx_t handle, void const* data, size_t data_length)
+{
+    TR_ASSERT(handle != NULL);
+
+    if (data_length == 0)
+    {
+        return true;
+    }
+
+    TR_ASSERT(data != NULL);
+
+    return check_result(EVP_DigestUpdate(handle, data, data_length));
+}
+
+bool tr_sha256_final(tr_sha256_ctx_t handle, uint8_t* hash)
+{
+    bool ret = true;
+
+    if (hash != NULL)
+    {
+        TR_ASSERT(handle != NULL);
+
+        unsigned int hash_length;
+
+        ret = check_result(EVP_DigestFinal_ex(handle, hash, &hash_length));
+
+        TR_ASSERT(!ret || hash_length == SHA256_DIGEST_LENGTH);
+    }
+
+    EVP_MD_CTX_destroy(handle);
+    return ret;
+}
+
+/***
+****
+***/
+
 #if OPENSSL_VERSION_NUMBER < 0x0090802fL
 
 static EVP_CIPHER_CTX* openssl_evp_cipher_context_new(void)

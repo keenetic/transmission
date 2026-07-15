@@ -36,6 +36,59 @@ static inline bool char_is_path_separator(char c)
     return strchr(PATH_DELIMITER_CHARS, c) != NULL;
 }
 
+static tr_quark key_file_tree(void)
+{
+    static tr_quark key = 0;
+
+    if (key == 0)
+    {
+        key = tr_quark_new("file tree", 9);
+    }
+
+    return key;
+}
+
+static tr_quark key_info_hash2(void)
+{
+    static tr_quark key = 0;
+
+    if (key == 0)
+    {
+        key = tr_quark_new("info_hash2", 10);
+    }
+
+    return key;
+}
+
+static tr_quark key_meta_version(void)
+{
+    static tr_quark key = 0;
+
+    if (key == 0)
+    {
+        key = tr_quark_new("meta version", 12);
+    }
+
+    return key;
+}
+
+static tr_quark key_piece_layers(void)
+{
+    static tr_quark key = 0;
+
+    if (key == 0)
+    {
+        key = tr_quark_new("piece layers", 12);
+    }
+
+    return key;
+}
+
+static bool dict_has_key(tr_variant* dict, tr_quark key)
+{
+    return dict != NULL && tr_variantDictFind(dict, key) != NULL;
+}
+
 static char* metainfoGetBasenameNameAndPartialHash(tr_info const* inf)
 {
     char const* name = inf->originalName;
@@ -569,6 +622,15 @@ static char const* tr_metainfoParseImpl(tr_session const* session, tr_info* inf,
             memcpy(inf->hash, raw, len);
             tr_sha1_to_hex(inf->hashString, inf->hash);
 
+            if (tr_variantDictFindRaw(d, key_info_hash2(), &raw, &len) && len == SHA256_DIGEST_LENGTH)
+            {
+                memcpy(inf->hash2, raw, len);
+                tr_sha256_to_hex(inf->hashString2, inf->hash2);
+                inf->hasHash2 = true;
+                inf->hasV2Metadata = true;
+                inf->isHybrid = true;
+            }
+
             /* maybe get the display name */
             if (tr_variantDictFindStr(d, TR_KEY_display_name, &str, &len))
             {
@@ -595,10 +657,38 @@ static char const* tr_metainfoParseImpl(tr_session const* session, tr_info* inf,
     }
     else
     {
+        int64_t meta_version = 0;
+        bool const has_meta_version = tr_variantDictFindInt(infoDict, key_meta_version(), &meta_version);
+        bool const has_file_tree = dict_has_key(infoDict, key_file_tree());
+        bool const has_piece_layers = dict_has_key(meta, key_piece_layers());
         size_t len;
         char* bstr = tr_variantToStr(infoDict, TR_VARIANT_FMT_BENC, &len);
+
+        bool const declares_v2 = has_meta_version && meta_version == 2;
+        bool const has_any_v2_field = has_meta_version || has_file_tree || has_piece_layers;
+
+        if (has_any_v2_field && !declares_v2)
+        {
+            tr_free(bstr);
+            return "meta version";
+        }
+
+        if (declares_v2 && !has_file_tree)
+        {
+            tr_free(bstr);
+            return "file tree";
+        }
+
+        inf->hasV2Metadata = declares_v2;
+
         tr_sha1(inf->hash, bstr, (int)len, NULL);
         tr_sha1_to_hex(inf->hashString, inf->hash);
+
+        if (inf->hasV2Metadata && tr_sha256(inf->hash2, bstr, (int)len, NULL))
+        {
+            tr_sha256_to_hex(inf->hashString2, inf->hash2);
+            inf->hasHash2 = true;
+        }
 
         if (infoDictLength != NULL)
         {
@@ -695,7 +785,7 @@ static char const* tr_metainfoParseImpl(tr_session const* session, tr_info* inf,
     {
         if (!tr_variantDictFindRaw(infoDict, TR_KEY_pieces, &raw, &len))
         {
-            return "pieces";
+            return inf->hasV2Metadata ? "v2-only torrent is not supported; a hybrid torrent must contain v1 pieces" : "pieces";
         }
 
         if (len % SHA_DIGEST_LENGTH != 0)
@@ -703,6 +793,7 @@ static char const* tr_metainfoParseImpl(tr_session const* session, tr_info* inf,
             return "pieces";
         }
 
+        inf->isHybrid = inf->hasV2Metadata;
         inf->pieceCount = len / SHA_DIGEST_LENGTH;
         inf->pieces = tr_new0(tr_piece, inf->pieceCount);
 

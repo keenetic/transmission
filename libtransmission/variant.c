@@ -743,7 +743,8 @@ bool tr_variantDictRemove(tr_variant* dict, tr_quark const key)
 
 struct KeyIndex
 {
-    char const* keystr;
+    void const* keystr;
+    size_t keylen;
     tr_variant* val;
 };
 
@@ -751,8 +752,15 @@ static int compareKeyIndex(void const* va, void const* vb)
 {
     struct KeyIndex const* a = va;
     struct KeyIndex const* b = vb;
+    size_t const common_len = MIN(a->keylen, b->keylen);
+    int const ret = memcmp(a->keystr, b->keystr, common_len);
 
-    return strcmp(a->keystr, b->keystr);
+    if (ret != 0)
+    {
+        return ret;
+    }
+
+    return a->keylen < b->keylen ? -1 : a->keylen > b->keylen ? 1 : 0;
 }
 
 struct SaveNode
@@ -778,7 +786,7 @@ static void nodeConstruct(struct SaveNode* node, tr_variant const* v, bool sort_
         for (size_t i = 0; i < n; i++)
         {
             tmp[i].val = v->val.l.vals + i;
-            tmp[i].keystr = tr_quark_get_string(tmp[i].val->key, NULL);
+            tmp[i].keystr = tr_quark_get_string(tmp[i].val->key, &tmp[i].keylen);
         }
 
         qsort(tmp, n, sizeof(struct KeyIndex), compareKeyIndex);

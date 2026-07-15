@@ -1652,10 +1652,15 @@ struct tr_info
     /* General info */
     uint8_t hash[SHA_DIGEST_LENGTH];
     char hashString[2 * SHA_DIGEST_LENGTH + 1];
+    uint8_t hash2[SHA256_DIGEST_LENGTH];
+    char hashString2[2 * SHA256_DIGEST_LENGTH + 1];
 
     /* Flags */
     bool isPrivate;
     bool isFolder;
+    bool hasHash2;
+    bool hasV2Metadata;
+    bool isHybrid;
 };
 
 static inline bool tr_torrentHasMetadata(tr_torrent const* tor)

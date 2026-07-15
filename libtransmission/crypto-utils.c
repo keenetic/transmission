@@ -85,6 +85,50 @@ bool tr_sha1(uint8_t* hash, void const* data1, int data1_length, ...)
 ****
 ***/
 
+bool tr_sha256(uint8_t* hash, void const* data1, int data1_length, ...)
+{
+    tr_sha256_ctx_t sha;
+
+    if ((sha = tr_sha256_init()) == NULL)
+    {
+        return false;
+    }
+
+    if (tr_sha256_update(sha, data1, data1_length))
+    {
+        va_list vl;
+        void const* data;
+
+        va_start(vl, data1_length);
+
+        while ((data = va_arg(vl, void const*)) != NULL)
+        {
+            int const data_length = va_arg(vl, int);
+            TR_ASSERT(data_length >= 0);
+
+            if (!tr_sha256_update(sha, data, data_length))
+            {
+                break;
+            }
+        }
+
+        va_end(vl);
+
+        /* did we reach the end of argument list? */
+        if (data == NULL)
+        {
+            return tr_sha256_final(sha, hash);
+        }
+    }
+
+    tr_sha256_final(sha, NULL);
+    return false;
+}
+
+/***
+****
+***/
+
 int tr_rand_int(int upper_bound)
 {
     TR_ASSERT(upper_bound > 0);

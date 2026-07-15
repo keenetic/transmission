@@ -139,6 +139,17 @@ static void showInfo(tr_info const* inf)
     printf("GENERAL\n\n");
     printf("  Name: %s\n", inf->name);
     printf("  Hash: %s\n", inf->hashString);
+
+    if (inf->hasHash2)
+    {
+        printf("  Hash v2: %s\n", inf->hashString2);
+    }
+
+    if (inf->hasV2Metadata)
+    {
+        printf("  Metainfo format: %s\n", inf->isHybrid ? "hybrid v1/v2" : "v2");
+    }
+
     printf("  Created by: %s\n", inf->creator ? inf->creator : "Unknown");
     printf("  Created on: %s\n", unix_timestamp_to_str(inf->dateCreated));
 

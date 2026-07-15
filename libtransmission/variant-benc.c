@@ -142,7 +142,12 @@ err:
     return EILSEQ;
 }
 
-static tr_variant* get_node(tr_ptrArray* stack, tr_quark* key, tr_variant* top, int* err)
+static tr_variant* get_node(
+    tr_ptrArray* stack,
+    tr_quark* key,
+    bool* has_key,
+    tr_variant* top,
+    int* err)
 {
     tr_variant* node = NULL;
 
@@ -158,10 +163,16 @@ static tr_variant* get_node(tr_ptrArray* stack, tr_quark* key, tr_variant* top, 
         {
             node = tr_variantListAdd(parent);
         }
-        else if (*key != 0 && tr_variantIsDict(parent))
+        else if (*has_key && tr_variantIsDict(parent))
         {
+            /*
+             * TR_KEY_NONE is a valid empty dictionary key. BEP 52 uses
+             * an empty key for file-tree leaf attributes, so the quark
+             * value cannot also be the "no pending key" sentinel.
+             */
             node = tr_variantDictAdd(parent, *key);
-            *key = 0;
+            *key = TR_KEY_NONE;
+            *has_key = false;
         }
         else
         {
@@ -183,7 +194,8 @@ int tr_variantParseBenc(void const* buf_in, void const* bufend_in, tr_variant* t
     uint8_t const* buf = buf_in;
     uint8_t const* bufend = bufend_in;
     tr_ptrArray stack = TR_PTR_ARRAY_INIT;
-    tr_quark key = 0;
+    tr_quark key = TR_KEY_NONE;
+    bool has_key = false;
 
     tr_variantInit(top, 0);
 
@@ -212,7 +224,7 @@ int tr_variantParseBenc(void const* buf_in, void const* bufend_in, tr_variant* t
 
             buf = end;
 
-            if ((v = get_node(&stack, &key, top, &err)) != NULL)
+            if ((v = get_node(&stack, &key, &has_key, top, &err)) != NULL)
             {
                 tr_variantInitInt(v, val);
             }
@@ -223,7 +235,7 @@ int tr_variantParseBenc(void const* buf_in, void const* bufend_in, tr_variant* t
 
             ++buf;
 
-            if ((v = get_node(&stack, &key, top, &err)) != NULL)
+            if ((v = get_node(&stack, &key, &has_key, top, &err)) != NULL)
             {
                 tr_variantInitList(v, 0);
                 tr_ptrArrayAppend(&stack, v);
@@ -235,7 +247,7 @@ int tr_variantParseBenc(void const* buf_in, void const* bufend_in, tr_variant* t
 
             ++buf;
 
-            if ((v = get_node(&stack, &key, top, &err)) != NULL)
+            if ((v = get_node(&stack, &key, &has_key, top, &err)) != NULL)
             {
                 tr_variantInitDict(v, 0);
                 tr_ptrArrayAppend(&stack, v);
@@ -245,7 +257,7 @@ int tr_variantParseBenc(void const* buf_in, void const* bufend_in, tr_variant* t
         {
             ++buf;
 
-            if (tr_ptrArrayEmpty(&stack) || key != 0)
+            if (tr_ptrArrayEmpty(&stack) || has_key)
             {
                 err = EILSEQ;
                 break;
@@ -274,11 +286,12 @@ int tr_variantParseBenc(void const* buf_in, void const* bufend_in, tr_variant* t
 
             buf = end;
 
-            if (key == 0 && !tr_ptrArrayEmpty(&stack) && tr_variantIsDict(tr_ptrArrayBack(&stack)))
+            if (!has_key && !tr_ptrArrayEmpty(&stack) && tr_variantIsDict(tr_ptrArrayBack(&stack)))
             {
                 key = tr_quark_new(str, str_len);
+                has_key = true;
             }
-            else if ((v = get_node(&stack, &key, top, &err)) != NULL)
+            else if ((v = get_node(&stack, &key, &has_key, top, &err)) != NULL)
             {
                 tr_variantInitStr(v, str, str_len);
             }

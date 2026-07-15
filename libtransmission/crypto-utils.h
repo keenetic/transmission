@@ -27,6 +27,8 @@ extern "C"
 
 /** @brief Opaque SHA1 context type. */
 typedef void* tr_sha1_ctx_t;
+/** @brief Opaque SHA256 context type. */
+typedef void* tr_sha256_ctx_t;
 /** @brief Opaque RC4 context type. */
 typedef void* tr_rc4_ctx_t;
 /** @brief Opaque DH context type. */
@@ -46,6 +48,11 @@ typedef void* tr_x509_cert_t;
 bool tr_sha1(uint8_t* hash, void const* data1, int data1_length, ...) TR_GNUC_NULL_TERMINATED;
 
 /**
+ * @brief Generate a SHA256 hash from one or more chunks of memory.
+ */
+bool tr_sha256(uint8_t* hash, void const* data1, int data1_length, ...) TR_GNUC_NULL_TERMINATED;
+
+/**
  * @brief Allocate and initialize new SHA1 hasher context.
  */
 tr_sha1_ctx_t tr_sha1_init(void);
@@ -59,6 +66,21 @@ bool tr_sha1_update(tr_sha1_ctx_t handle, void const* data, size_t data_length);
  * @brief Finalize and export SHA1 hash, free hasher context.
  */
 bool tr_sha1_final(tr_sha1_ctx_t handle, uint8_t* hash);
+
+/**
+ * @brief Allocate and initialize new SHA256 hasher context.
+ */
+tr_sha256_ctx_t tr_sha256_init(void);
+
+/**
+ * @brief Update SHA256 hash.
+ */
+bool tr_sha256_update(tr_sha256_ctx_t handle, void const* data, size_t data_length);
+
+/**
+ * @brief Finalize and export SHA256 hash, free hasher context.
+ */
+bool tr_sha256_final(tr_sha256_ctx_t handle, uint8_t* hash);
 
 /**
  * @brief Allocate and initialize new RC4 cipher context.
@@ -204,6 +226,22 @@ static inline void tr_sha1_to_hex(char* hex, uint8_t const* sha1)
 static inline void tr_hex_to_sha1(uint8_t* sha1, char const* hex)
 {
     tr_hex_to_binary(hex, sha1, SHA_DIGEST_LENGTH);
+}
+
+/**
+ * @brief Wrapper around tr_binary_to_hex() for SHA256_DIGEST_LENGTH.
+ */
+static inline void tr_sha256_to_hex(char* hex, uint8_t const* sha256)
+{
+    tr_binary_to_hex(sha256, hex, SHA256_DIGEST_LENGTH);
+}
+
+/**
+ * @brief Wrapper around tr_hex_to_binary() for SHA256_DIGEST_LENGTH.
+ */
+static inline void tr_hex_to_sha256(uint8_t* sha256, char const* hex)
+{
+    tr_hex_to_binary(hex, sha256, SHA256_DIGEST_LENGTH);
 }
 
 /** @} */
