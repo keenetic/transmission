@@ -466,8 +466,13 @@ extern "C"
 
     struct statvfs buf = {};
     return statvfs(path, &buf) != 0 ? (struct tr_sys_path_capacity){ -1, -1 } :
-                                      (struct tr_sys_path_capacity){ (int64_t)buf.f_bavail * (int64_t)buf.f_frsize,
-                                                                     (int64_t)buf.f_blocks * (int64_t)buf.f_frsize };
+                                      (struct tr_sys_path_capacity){
+#ifdef HAVE_NDM
+                                          (int64_t)buf.f_bfree * (int64_t)buf.f_frsize,
+#else
+                                          (int64_t)buf.f_bavail * (int64_t)buf.f_frsize,
+#endif
+                                          (int64_t)buf.f_blocks * (int64_t)buf.f_frsize };
 
 #else
 
