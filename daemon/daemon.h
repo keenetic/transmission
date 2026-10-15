@@ -15,6 +15,7 @@
 #include <libtransmission/variant.h>
 #include <libtransmission/quark.h>
 
+struct event;
 struct event_base;
 struct tr_error;
 struct tr_session;
@@ -41,6 +42,10 @@ public:
     void periodic_update();
     void reconfigure();
     void stop();
+#ifdef HAVE_NDM
+    void schedule_settings_save(tr_session* session);
+    void save_settings_now();
+#endif
 
 private:
 #ifdef HAVE_SYS_SIGNALFD_H
@@ -52,6 +57,9 @@ private:
     tr_session* my_session_ = nullptr;
     char const* log_file_name_ = nullptr;
     struct event_base* ev_base_ = nullptr;
+#ifdef HAVE_NDM
+    struct event* save_ev_ = nullptr;
+#endif
     FILE* log_stream_ = nullptr;
 
     bool parse_args(int argc, char const* const* argv, bool* dump_settings, bool* foreground, int* exit_code);

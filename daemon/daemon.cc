@@ -406,12 +406,26 @@ void periodic_update(evutil_socket_t /*fd*/, short /*what*/, void* arg)
     static_cast<tr_daemon*>(arg)->periodic_update();
 }
 
-tr_rpc_callback_status on_rpc_callback(tr_session* /*session*/, tr_rpc_callback_type type, tr_torrent* /*tor*/, void* arg)
+#ifdef HAVE_NDM
+void deferred_save(evutil_socket_t /*fd*/, short /*what*/, void* arg)
 {
+    static_cast<tr_daemon*>(arg)->save_settings_now();
+}
+#endif
+
+tr_rpc_callback_status on_rpc_callback(tr_session* session, tr_rpc_callback_type type, tr_torrent* /*tor*/, void* arg)
+{
+    auto* const daemon = static_cast<tr_daemon*>(arg);
     if (type == TR_RPC_SESSION_CLOSE)
     {
-        static_cast<tr_daemon*>(arg)->stop();
+        daemon->stop();
     }
+#ifdef HAVE_NDM
+    else if (type == TR_RPC_SESSION_CHANGED)
+    {
+        daemon->schedule_settings_save(session);
+    }
+#endif
     return TR_RPC_OK;
 }
 
@@ -860,6 +874,32 @@ void tr_daemon::reconfigure()
     }
 }
 
+#ifdef HAVE_NDM
+void tr_daemon::save_settings_now()
+{
+    if (my_session_ == nullptr)
+    {
+        return;
+    }
+    auto const current = tr_sessionGetSettings(my_session_);
+    tr_sessionSaveSettings(my_session_, tr_sessionGetConfigDir(my_session_), current);
+}
+
+void tr_daemon::schedule_settings_save(tr_session* session)
+{
+    if (save_ev_ == nullptr || session == nullptr)
+    {
+        return;
+    }
+    auto constexpr OneSecond = timeval{ 1, 0 };
+    event_del(save_ev_);
+    if (event_add(save_ev_, &OneSecond) == -1)
+    {
+        save_settings_now();
+    }
+}
+#endif
+
 void tr_daemon::stop()
 {
     event_base_loopexit(ev_base_, nullptr);
@@ -937,14 +977,24 @@ int tr_daemon::start([[maybe_unused]] bool foreground)
 
     my_session_ = session;
 
+    /* Resources referenced by the common cleanup path must be declared before any goto CLEANUP. */
+    auto watchdir = std::unique_ptr<Watchdir>{};
+    event* status_ev = nullptr;
+#ifdef HAVE_NDM
+    save_ev_ = event_new(ev_base_, -1, EV_TIMEOUT, &::deferred_save, this);
+    if (save_ev_ == nullptr)
+    {
+        tr_logAddError(fmt::format("Failed to create deferred settings-save event: {}", tr_strerror(errno)));
+        goto CLEANUP;
+    }
+#endif
+
     /* If we got a SIGHUP during startup, process that now. */
     if (seen_hup_)
     {
         reconfigure();
     }
 
-    /* maybe add a watchdir */
-    auto watchdir = std::unique_ptr<Watchdir>{};
     if (settings_map->value_if<bool>(TR_KEY_watch_dir_enabled).value_or(false))
     {
         auto const force_generic = settings_map->value_if<bool>(TR_KEY_watch_dir_force_generic).value_or(false);
@@ -989,7 +1039,6 @@ int tr_daemon::start([[maybe_unused]] bool foreground)
 #endif
 
     /* Create new timer event to report daemon status */
-    event* status_ev;
     {
         constexpr auto one_sec = timeval{ 1, 0 }; // 1 second
         status_ev = event_new(ev_base_, -1, EV_PERSIST, &::periodic_update, this);
@@ -1044,6 +1093,14 @@ CLEANUP:
     }
 
     cleanup_signals(sig_ev);
+#ifdef HAVE_NDM
+    if (save_ev_ != nullptr)
+    {
+        event_del(save_ev_);
+        event_free(save_ev_);
+        save_ev_ = nullptr;
+    }
+#endif
 
     event_base_free(ev_base_);
 
