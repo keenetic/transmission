@@ -440,7 +440,13 @@ public:
     static auto constexpr MaxRedirects = long{ 10 };
 
     bool const curl_verbose = tr_env_key_exists("TR_CURL_VERBOSE");
+#ifdef HAVE_NDM
+    // Preserve Keenetic's historical tracker TLS policy: verification is opt-in
+    // via TR_CURL_SSL_VERIFY. Non-NDM builds retain upstream's secure opt-out policy.
+    bool const curl_ssl_verify = tr_env_key_exists("TR_CURL_SSL_VERIFY");
+#else
     bool const curl_ssl_verify = !tr_env_key_exists("TR_CURL_SSL_NO_VERIFY");
+#endif
     bool const curl_proxy_ssl_verify = !tr_env_key_exists("TR_CURL_PROXY_SSL_NO_VERIFY");
     bool const curl_avoid_http2 = check_curl_gh10936() || check_curl_gh6312(); // both related to curl http2 bugs
 
