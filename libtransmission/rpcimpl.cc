@@ -18,6 +18,13 @@
 #include <utility>
 #include <vector>
 
+#ifdef HAVE_NDM
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <sys/sysmacros.h>
+#endif
+#endif
+
 #include <fmt/format.h>
 
 #include <small/map.hpp>
@@ -50,6 +57,65 @@
 
 using namespace std::literals;
 using namespace libtransmission::Values;
+
+#ifdef HAVE_NDM
+namespace
+{
+#ifndef _WIN32
+constexpr unsigned int NdmInvalidDeviceMajor = 0U;
+constexpr unsigned int NdmMtdDeviceMajor = 31U;
+
+bool ndm_is_valid_download_dir(std::string_view const dir, unsigned int const depth = 0U)
+{
+    if (std::empty(dir))
+    {
+        return false;
+    }
+
+    auto const path = std::string{ dir };
+    struct stat sb = {};
+    if (::stat(path.c_str(), &sb) != 0)
+    {
+        if (errno != ENOENT)
+        {
+            tr_logAddError(fmt::format("Unable to get {}directory information for '{}': {}", depth == 0U ? "" : "parent ", dir, tr_strerror(errno)));
+            return false;
+        }
+
+        auto const slash = dir.find_last_of('/');
+        if (slash == std::string_view::npos || slash == 0U)
+        {
+            tr_logAddError(fmt::format("'{}' is not a valid {}directory to download", dir, depth == 0U ? "" : "parent "));
+            return false;
+        }
+
+        return ndm_is_valid_download_dir(dir.substr(0U, slash), depth + 1U);
+    }
+
+    if (!S_ISDIR(sb.st_mode))
+    {
+        tr_logAddError(fmt::format("'{}' is not a {}directory", dir, depth == 0U ? "" : "parent "));
+        return false;
+    }
+
+    auto const dev_major = static_cast<unsigned int>(major(sb.st_dev));
+    if (dev_major == NdmInvalidDeviceMajor || dev_major == NdmMtdDeviceMajor)
+    {
+        tr_logAddError(depth == 0U ? fmt::format("'{}' directory cannot be used to download", dir) :
+                                      fmt::format("'{}' parent directory cannot be used to create new download directories", dir));
+        return false;
+    }
+
+    return true;
+}
+#else
+bool ndm_is_valid_download_dir(std::string_view const /*dir*/, unsigned int const /*depth*/ = 0U)
+{
+    return true;
+}
+#endif
+} // namespace
+#endif
 
 namespace JsonRpc
 {
@@ -1419,6 +1485,13 @@ namespace make_torrent_field_helpers
         return { Error::PATH_NOT_ABSOLUTE, "new location path is not absolute"s };
     }
 
+#ifdef HAVE_NDM
+    if (!ndm_is_valid_download_dir(*location))
+    {
+        return { Error::INVALID_PARAMS, "invalid download directory"s };
+    }
+#endif
+
     auto const move_flag = args_in.value_if<bool>(TR_KEY_move).value_or(false);
     for (auto* tor : getTorrents(session, args_in))
     {
@@ -1852,6 +1925,25 @@ void torrentAdd(tr_session* session, tr_variant::Map const& args_in, tr_rpc_idle
 
     tr_logAddTrace(fmt::format("torrentAdd: filename is '{}'", filename));
 
+#ifdef HAVE_NDM
+    auto const& effective_download_dir = !std::empty(ctor.download_dir(TR_FORCE)) ? ctor.download_dir(TR_FORCE) : ctor.download_dir(TR_FALLBACK);
+    if (std::empty(effective_download_dir))
+    {
+        tr_rpc_idle_done(idle_data, Error::INVALID_PARAMS, "no download directory specified"sv);
+        return;
+    }
+    if (!ndm_is_valid_download_dir(effective_download_dir))
+    {
+        tr_rpc_idle_done(idle_data, Error::INVALID_PARAMS, "invalid download directory"sv);
+        return;
+    }
+    if (session->useIncompleteDir() && !std::empty(session->incompleteDir()) && !ndm_is_valid_download_dir(session->incompleteDir()))
+    {
+        tr_rpc_idle_done(idle_data, Error::INVALID_PARAMS, "invalid incomplete directory"sv);
+        return;
+    }
+#endif
+
     if (isCurlURL(filename))
     {
         auto* const d = new add_torrent_idle_data{ idle_data, std::move(ctor) };
@@ -2241,6 +2333,12 @@ using SessionAccessors = std::pair<SessionGetter, SessionSetter>;
                 {
                     err = { JsonRpc::Error::PATH_NOT_ABSOLUTE, "download directory path is not absolute"s };
                 }
+#ifdef HAVE_NDM
+                else if (!std::empty(*download_dir) && !ndm_is_valid_download_dir(*download_dir))
+                {
+                    err = { JsonRpc::Error::INVALID_PARAMS, "invalid download directory"s };
+                }
+#endif
                 else if (!std::empty(*download_dir))
                 {
                     tgt.setDownloadDir(*download_dir);
@@ -2320,6 +2418,12 @@ using SessionAccessors = std::pair<SessionGetter, SessionSetter>;
                 {
                     err = { JsonRpc::Error::PATH_NOT_ABSOLUTE, "incomplete torrents directory path is not absolute"s };
                 }
+#ifdef HAVE_NDM
+                else if (!std::empty(*dir) && !ndm_is_valid_download_dir(*dir))
+                {
+                    err = { JsonRpc::Error::INVALID_PARAMS, "invalid incomplete directory"s };
+                }
+#endif
                 else if (!std::empty(*dir))
                 {
                     tgt.setIncompleteDir(*dir);
