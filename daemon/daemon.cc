@@ -1172,9 +1172,7 @@ bool tr_daemon::init(int argc, char const* const argv[], bool* foreground, int* 
         return false;
     }
 
-#ifdef HAVE_NDM
-    log_stream_ = stderr;
-#else
+#ifndef HAVE_NDM
     if (*foreground && log_stream_ == nullptr)
     {
         log_stream_ = stderr;
