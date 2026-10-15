@@ -61,21 +61,20 @@ bool preallocate_file_ndm(tr_sys_file_t const fd, uint64_t length, tr_error* err
         return true;
     }
 
-    // TNTFS >= 3021.4.23.7 handles sparse ftruncate efficiently.
-    auto local_error = tr_error{};
-    if (tr_sys_file_truncate(fd, length, &local_error))
-    {
-        return true;
-    }
-
     errno = 0;
     if (ndm_tuxera_fallocate(fd, length))
     {
         return true;
     }
 
-    local_error = {};
+    auto local_error = tr_error{};
     if (tr_sys_file_preallocate(fd, length, 0, &local_error))
+    {
+        return true;
+    }
+
+    local_error = {};
+    if (tr_sys_file_truncate(fd, length, &local_error))
     {
         return true;
     }
