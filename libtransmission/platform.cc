@@ -212,7 +212,11 @@ std::string tr_getDefaultDownloadDir()
     return fmt::format("{:s}/Desktop"sv, getHomeDir());
 #endif
 
+#ifdef HAVE_NDM
+    return fmt::format("{:s}/download"sv, getHomeDir());
+#else
     return fmt::format("{:s}/Downloads"sv, getHomeDir());
+#endif
 }
 
 size_t tr_getDefaultDownloadDirToBuf(char* buf, size_t buflen)

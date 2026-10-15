@@ -45,7 +45,11 @@ TEST_F(PlatformTest, defaultDownloadDir)
 {
     setenv("HOME", sandboxDir().c_str(), 1);
 
+#ifdef HAVE_NDM
+    auto const expected = fmt::format("{:s}/download"sv, sandboxDir());
+#else
     auto const expected = fmt::format("{:s}/Downloads"sv, sandboxDir());
+#endif
     auto const actual = tr_getDefaultDownloadDir();
     EXPECT_EQ(expected, actual);
 
