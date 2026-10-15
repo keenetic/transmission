@@ -208,6 +208,18 @@ public:
 
     // ---
 
+    [[nodiscard]] constexpr bool seed_mode() const noexcept
+    {
+        return seed_mode_;
+    }
+
+    constexpr void set_seed_mode(bool const seed_mode) noexcept
+    {
+        seed_mode_ = seed_mode;
+    }
+
+    // ---
+
     [[nodiscard]] constexpr auto const& sequential_download(tr_ctorMode const mode) const noexcept
     {
         return optional_args_[mode].sequential_download_;
@@ -243,6 +255,7 @@ private:
     std::array<OptionalArgs, 2> optional_args_{};
 
     tr_torrent::VerifyDoneCallback verify_done_callback_;
+    bool seed_mode_ = false;
 
     tr_torrent::labels_t labels_;
 

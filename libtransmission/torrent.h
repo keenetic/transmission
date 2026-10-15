@@ -1348,6 +1348,7 @@ private:
     // files' mtimes (file_mtimes_). If checked_pieces_.test(piece) is false,
     // it means that piece needs to be checked before its data is used.
     tr_bitfield checked_pieces_ = tr_bitfield{ 0 };
+    bool seed_mode_ = false;
 
     labels_t labels_;
 

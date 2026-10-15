@@ -370,6 +370,9 @@ auto constexpr Options = std::array<tr_option, 106>{ {
       "<protocol(s)>" },
     { 831, "utp", "*DEPRECATED* Enable µTP for peer connections", nullptr, Arg::None, nullptr },
     { 832, "no-utp", "*DEPRECATED* Disable µTP for peer connections", nullptr, Arg::None, nullptr },
+#ifdef HAVE_NDM
+    { 'z', "seed-mode", "Add torrent as a seed without verification", "z", Arg::None, nullptr },
+#endif
     { 'v', "verify", "Verify the current torrent(s)", "v", Arg::None, nullptr },
     { 'V', "version", "Show version number and exit", "V", Arg::None, nullptr },
     { 'w',
@@ -497,6 +500,9 @@ enum
     case 'g': /* get */
     case 'G': /* no-get */
     case 'L': /* labels */
+#ifdef HAVE_NDM
+    case 'z': /* seed mode while adding */
+#endif
     case 700: /* torrent priority-high */
     case 701: /* torrent priority-normal */
     case 702: /* torrent priority-low */
@@ -3191,6 +3197,14 @@ int process_args(char const* rpcurl, int argc, char const* const* argv, RemoteCo
 
             switch (c)
             {
+#ifdef HAVE_NDM
+            case 'z':
+                if (tadd.has_value())
+                {
+                    args.insert_or_assign(TR_KEY_seed_mode, true);
+                }
+                break;
+#endif
             case 'g':
                 args.insert_or_assign(TR_KEY_files_wanted, make_files_list(optarg_sv));
                 break;

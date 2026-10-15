@@ -544,6 +544,7 @@ auto constexpr MyStatic = std::array<std::string_view, TR_N_KEYS>{
     "seedRatioMode"sv, // rpc
     "seed_idle_limit"sv, // rpc
     "seed_idle_mode"sv, // rpc
+    "seed_mode"sv, // rpc torrent-add (NDM)
     "seed_queue_enabled"sv, // rpc, tr_session::Settings
     "seed_queue_size"sv, // rpc, tr_session::Settings
     "seed_ratio_limit"sv, // rpc

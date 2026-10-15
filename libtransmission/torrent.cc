@@ -889,6 +889,25 @@ void tr_torrent::on_metainfo_completed()
 
     callScriptIfEnabled(this, TR_SCRIPT_ON_TORRENT_ADDED);
 
+    if (seed_mode_)
+    {
+        checked_pieces_.set_has_all();
+        completion_.set_has_all();
+        seed_mode_ = false;
+        recheck_completeness();
+        date_done_ = date_added_;
+
+        if (start_when_stable_)
+        {
+            start(false, true);
+        }
+        else if (is_running())
+        {
+            stop_soon();
+        }
+        return;
+    }
+
     if (session->shouldFullyVerifyAddedTorrents() || !is_new_torrent_a_seed())
     {
         // Potentially, we are in `tr_torrent::init`,
@@ -922,6 +941,7 @@ void tr_torrent::init(tr_ctor const& ctor)
     auto const now_sec = tr_time();
 
     on_metainfo_updated();
+    seed_mode_ = ctor.seed_mode();
 
     if (auto dir = ctor.download_dir(TR_FORCE); !std::empty(dir))
     {
