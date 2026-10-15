@@ -2356,7 +2356,12 @@ namespace rename_helpers
 {
 bool renameArgsAreValid(tr_torrent const* tor, std::string_view oldpath, std::string_view newname)
 {
-    if (std::empty(oldpath) || std::empty(newname) || newname == "."sv || newname == ".."sv || tr_strv_contains(newname, '/'))
+    if (std::empty(oldpath) || std::empty(newname) || newname == "."sv || newname == ".."sv ||
+#ifdef HAVE_NDM
+        newname.find_first_of("\\/:*?\"<>|") != std::string_view::npos)
+#else
+        tr_strv_contains(newname, '/'))
+#endif
     {
         return false;
     }

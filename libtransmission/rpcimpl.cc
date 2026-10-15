@@ -1490,6 +1490,11 @@ namespace make_torrent_field_helpers
     }
 
 #ifdef HAVE_NDM
+    if (location->find_first_of("\\:*?\"<>|") != std::string_view::npos)
+    {
+        return { Error::INVALID_PARAMS, "illegal characters"s };
+    }
+
     if (!ndm_is_valid_download_dir(*location))
     {
         return { Error::INVALID_PARAMS, "invalid download directory"s };
