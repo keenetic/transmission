@@ -22,6 +22,8 @@
 
 #define LIBTRANSMISSION_WATCHDIR_MODULE
 
+#include "libtransmission/error.h"
+#include "libtransmission/file.h"
 #include "libtransmission/log.h"
 #include "libtransmission/tr-assert.h"
 #include "libtransmission/tr-strbuf.h"
@@ -90,6 +92,19 @@ private:
                     fmt::arg("error_code", error_code)));
             return;
         }
+
+#ifdef HAVE_NDM
+        auto const watch_dir = tr_pathbuf{ dirname() };
+        if (!tr_sys_path_exists(watch_dir))
+        {
+            auto error = tr_error{};
+            if (!tr_sys_dir_create(watch_dir, TR_SYS_DIR_CREATE_PARENTS, 0777, &error))
+            {
+                tr_logAddError(fmt::format("Couldn't create watch directory '{}': {} ({})", dirname(), error.message(), error.code()));
+                return;
+            }
+        }
+#endif
 
         inwd_ = inotify_add_watch(infd_, tr_pathbuf{ dirname() }, InotifyWatchMask | IN_ONLYDIR);
         if (inwd_ == -1)
