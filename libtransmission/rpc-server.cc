@@ -963,6 +963,15 @@ void start_server(tr_rpc_server* server)
         }
 
         server->ndm_core_ = ndm_core_open("transmission/ci", NdmLocalAuthTimeout, NdmCoreCacheMaxSize);
+        if (server->ndm_core_ != nullptr)
+        {
+            bool authenticated = false;
+            if (!ndm_core_authenticate_local_service(server->ndm_core_, "transmission", true, &authenticated) ||
+                !authenticated)
+            {
+                ndm_core_close(&server->ndm_core_);
+            }
+        }
 #endif
         evhttp_set_gencb(httpd, handle_request, server);
         server->httpd.reset(httpd);
