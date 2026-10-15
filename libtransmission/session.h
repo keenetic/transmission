@@ -428,8 +428,13 @@ public:
         bool is_incomplete_file_naming_enabled = true;
         bool lpd_enabled = true;
         bool peer_port_random_on_start = false;
+#ifdef HAVE_NDM
+        bool pex_enabled = false;
+        bool port_forwarding_enabled = false;
+#else
         bool pex_enabled = true;
         bool port_forwarding_enabled = true;
+#endif
         bool queue_stalled_enabled = true;
         bool ratio_limit_enabled = false;
         bool script_torrent_added_enabled = false;
@@ -445,7 +450,11 @@ public:
         bool tcp_enabled = true;
         bool torrent_complete_verify_enabled = false;
         bool utp_enabled = true;
+#ifdef HAVE_NDM
+        double ratio_limit = 1.5;
+#else
         double ratio_limit = 2.0;
+#endif
         size_t cache_size_mbytes = 4U;
         size_t download_queue_size = 5U;
         size_t idle_seeding_limit_minutes = 30U;
@@ -454,8 +463,13 @@ public:
         size_t queue_stalled_minutes = 30U;
         size_t reqq = 2000U;
         size_t seed_queue_size = 10U;
+#ifdef HAVE_NDM
+        size_t speed_limit_down = 20000U;
+        size_t speed_limit_up = 20000U;
+#else
         size_t speed_limit_down = 100U;
         size_t speed_limit_up = 100U;
+#endif
         size_t upload_slots_per_torrent = 8U;
         small::max_size_vector<tr_preferred_transport, TR_NUM_PREFERRED_TRANSPORT> preferred_transports = {
             TR_PREFER_UTP,
@@ -1286,6 +1300,7 @@ private:
     friend void tr_sessionSetQueueStalledEnabled(tr_session* session, bool is_enabled);
     friend void tr_sessionSetQueueStalledMinutes(tr_session* session, int minutes);
     friend void tr_sessionSetRPCCallback(tr_session* session, tr_rpc_func func, void* user_data);
+    friend void tr_sessionSetSpeedLimit_KBps(tr_session* session, tr_direction dir, size_t limit_kbyps);
     friend void tr_sessionSetRPCEnabled(tr_session* session, bool is_enabled);
     friend void tr_sessionSetRPCPassword(tr_session* session, char const* password);
     friend void tr_sessionSetRPCPasswordEnabled(tr_session* session, bool enabled);
@@ -1366,6 +1381,11 @@ private:
     tr_port advertised_peer_port_;
 
     bool is_closing_ = false;
+#ifdef HAVE_NDM
+    size_t ndm_max_speed_kbps_ = 0U;
+    size_t ndm_max_peers_ = 0U;
+    size_t ndm_cache_size_mbytes_ = 0U;
+#endif
 
     /// fields that aren't trivial,
     /// but are self-contained / don't hold references to others

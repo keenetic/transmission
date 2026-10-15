@@ -9,6 +9,7 @@
 #include <csignal>
 #include <cstddef> // size_t
 #include <cstdint>
+#include <cstdlib>
 #include <ctime>
 #include <future>
 #include <iterator> // for std::back_inserter
@@ -67,6 +68,21 @@ using namespace libtransmission::Values;
 
 namespace
 {
+#ifdef HAVE_NDM
+size_t ndm_env_limit(char const* name)
+{
+    if (auto const* value = std::getenv(name); value != nullptr)
+    {
+        if (auto parsed = tr_num_parse<size_t>(value); parsed)
+        {
+            return *parsed;
+        }
+    }
+    return 0U;
+}
+#endif
+
+
 namespace bandwidth_group_helpers
 {
 auto constexpr BandwidthGroupsFilename = "bandwidth-groups.json"sv;
@@ -786,6 +802,24 @@ void tr_session::setSettings(tr_variant const& settings, bool force)
 void tr_session::setSettings(tr_session::Settings&& settings_in, bool force)
 {
     auto const lock = unique_lock();
+#ifdef HAVE_NDM
+    if (ndm_max_speed_kbps_ != 0U)
+    {
+        settings_in.speed_limit_down = std::min(settings_in.speed_limit_down, ndm_max_speed_kbps_);
+        settings_in.speed_limit_up = std::min(settings_in.speed_limit_up, ndm_max_speed_kbps_);
+        settings_in.speed_limit_down_enabled = true;
+        settings_in.speed_limit_up_enabled = true;
+    }
+    if (ndm_max_peers_ != 0U)
+    {
+        settings_in.peer_limit_global = std::min(settings_in.peer_limit_global, ndm_max_peers_);
+        settings_in.peer_limit_per_torrent = std::min(settings_in.peer_limit_per_torrent, ndm_max_peers_);
+    }
+    if (ndm_cache_size_mbytes_ != 0U)
+    {
+        settings_in.cache_size_mbytes = ndm_cache_size_mbytes_;
+    }
+#endif
 
     std::swap(settings_, settings_in);
     auto const& new_settings = settings_;
@@ -1213,7 +1247,12 @@ void tr_sessionSetSpeedLimit_KBps(tr_session* const session, tr_direction const 
     TR_ASSERT(session != nullptr);
     TR_ASSERT(tr_isDirection(dir));
 
-    session->set_speed_limit(dir, Speed{ limit_kbyps, Speed::Units::KByps });
+#ifdef HAVE_NDM
+    auto const limit = session->ndm_max_speed_kbps_ != 0U ? std::min(limit_kbyps, session->ndm_max_speed_kbps_) : limit_kbyps;
+#else
+    auto const limit = limit_kbyps;
+#endif
+    session->set_speed_limit(dir, Speed{ limit, Speed::Units::KByps });
 }
 
 size_t tr_sessionGetSpeedLimit_KBps(tr_session const* session, tr_direction dir)
@@ -1229,6 +1268,12 @@ void tr_sessionLimitSpeed(tr_session* session, tr_direction const dir, bool limi
     TR_ASSERT(session != nullptr);
     TR_ASSERT(tr_isDirection(dir));
 
+#ifdef HAVE_NDM
+    if (session->ndm_max_speed_kbps_ != 0U)
+    {
+        limited = true;
+    }
+#endif
     if (dir == TR_DOWN)
     {
         session->settings_.speed_limit_down_enabled = limited;
@@ -1256,7 +1301,12 @@ void tr_sessionSetAltSpeed_KBps(tr_session* const session, tr_direction const di
     TR_ASSERT(session != nullptr);
     TR_ASSERT(tr_isDirection(dir));
 
-    session->alt_speeds_.set_speed_limit(dir, Speed{ limit_kbyps, Speed::Units::KByps });
+#ifdef HAVE_NDM
+    auto const limit = session->ndm_max_speed_kbps_ != 0U ? std::min(limit_kbyps, session->ndm_max_speed_kbps_) : limit_kbyps;
+#else
+    auto const limit = limit_kbyps;
+#endif
+    session->alt_speeds_.set_speed_limit(dir, Speed{ limit, Speed::Units::KByps });
     session->update_bandwidth(dir);
 }
 
@@ -1349,6 +1399,12 @@ void tr_sessionSetPeerLimit(tr_session* session, uint16_t max_global_peers)
 {
     TR_ASSERT(session != nullptr);
 
+#ifdef HAVE_NDM
+    if (session->ndm_max_peers_ != 0U)
+    {
+        max_global_peers = std::min<size_t>(max_global_peers, session->ndm_max_peers_);
+    }
+#endif
     session->settings_.peer_limit_global = max_global_peers;
 }
 
@@ -1363,6 +1419,12 @@ void tr_sessionSetPeerLimitPerTorrent(tr_session* session, uint16_t max_peers)
 {
     TR_ASSERT(session != nullptr);
 
+#ifdef HAVE_NDM
+    if (session->ndm_max_peers_ != 0U)
+    {
+        max_peers = std::min<size_t>(max_peers, session->ndm_max_peers_);
+    }
+#endif
     session->settings_.peer_limit_per_torrent = max_peers;
 }
 
@@ -1724,6 +1786,12 @@ void tr_sessionSetCacheLimit_MB(tr_session* session, size_t mbytes)
 {
     TR_ASSERT(session != nullptr);
 
+#ifdef HAVE_NDM
+    if (session->ndm_cache_size_mbytes_ != 0U)
+    {
+        mbytes = session->ndm_cache_size_mbytes_;
+    }
+#endif
     session->settings_.cache_size_mbytes = mbytes;
     session->cache->set_limit(Memory{ mbytes, Memory::Units::MBytes });
 }
@@ -2259,6 +2327,11 @@ tr_session::tr_session(std::string_view config_dir, tr_variant const& settings_d
     , queue_timer_{ timer_maker_->create([this]() { on_queue_timer(); }) }
     , save_timer_{ timer_maker_->create([this]() { on_save_timer(); }) }
 {
+#ifdef HAVE_NDM
+    ndm_max_speed_kbps_ = ndm_env_limit("MAX_SPEED_KBPS");
+    ndm_max_peers_ = ndm_env_limit("MAX_PEERS");
+    ndm_cache_size_mbytes_ = ndm_env_limit("CACHE_SIZE_MB");
+#endif
     now_timer_->start_repeating(1s);
     queue_timer_->start_repeating(QueueInterval);
     save_timer_->start_repeating(SaveInterval);
