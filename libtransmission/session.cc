@@ -1426,7 +1426,18 @@ void tr_sessionSetPeerLimitPerTorrent(tr_session* session, uint16_t max_peers)
         max_peers = std::min<size_t>(max_peers, session->ndm_max_peers_);
     }
 #endif
+#ifdef HAVE_NDM
+    if (session->settings_.peer_limit_per_torrent != max_peers)
+    {
+        session->settings_.peer_limit_per_torrent = max_peers;
+        for (auto* const tor : session->torrents())
+        {
+            tor->set_peer_limit(max_peers);
+        }
+    }
+#else
     session->settings_.peer_limit_per_torrent = max_peers;
+#endif
 }
 
 uint16_t tr_sessionGetPeerLimitPerTorrent(tr_session const* session)

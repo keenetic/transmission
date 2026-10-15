@@ -986,6 +986,12 @@ void tr_torrent::init(tr_ctor const& ctor)
         auto const was_dirty = is_dirty();
         auto resume_helper = ResumeHelper{ *this };
         loaded = tr_resume::load(this, resume_helper, tr_resume::All, ctor);
+#ifdef HAVE_NDM
+        if ((loaded & tr_resume::MaxPeers) != 0U)
+        {
+            set_peer_limit(session->peerLimitPerTorrent());
+        }
+#endif
         set_dirty(was_dirty);
         tr_torrent_metainfo::migrate_file(session->torrentDir(), name(), info_hash_string(), ".torrent"sv);
     }

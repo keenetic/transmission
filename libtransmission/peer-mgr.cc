@@ -479,6 +479,20 @@ public:
         return std::size(peers);
     }
 
+    [[nodiscard]] size_t connectionCount() const noexcept
+    {
+        auto count = peerCount();
+        for (auto const& [socket_address, peer_info] : connectable_pool)
+        {
+            (void)socket_address;
+            if (peer_info->has_handshake())
+            {
+                ++count;
+            }
+        }
+        return count;
+    }
+
     void remove_peer(std::shared_ptr<tr_peerMsgs> const& peer)
     {
         auto const lock = unique_lock();
@@ -1424,10 +1438,18 @@ void create_bit_torrent_peer(
         return false;
     }
 
+#ifdef HAVE_NDM
+    if (swarm->connectionCount() >= swarm->tor->peer_limit())
+    {
+        tr_logAddTraceSwarm(swarm, fmt::format("dropping peer {} because the per-torrent peer limit has been reached", info->display_name()));
+        return false;
+    }
+#else
     if (swarm->peerCount() >= swarm->tor->peer_limit()) // too many peers already
     {
         return false;
     }
+#endif
 
     if (info->is_connected()) // we're already connected to this peer; do nothing
     {
@@ -2734,7 +2756,11 @@ void get_peer_candidates(size_t global_peer_limit, tr_torrents& torrents, tr_pee
         }
 
         /* if we've already got enough peers in this torrent... */
+#ifdef HAVE_NDM
+        if (tor->peer_limit() <= swarm->connectionCount())
+#else
         if (tor->peer_limit() <= swarm->peerCount())
+#endif
         {
             continue;
         }
@@ -2773,6 +2799,13 @@ void get_peer_candidates(size_t global_peer_limit, tr_torrents& torrents, tr_pee
 void initiate_connection(tr_peerMgr* mgr, tr_swarm* s, tr_peer_info& peer_info)
 {
     using namespace handshake_helpers;
+
+#ifdef HAVE_NDM
+    if (s->connectionCount() >= s->tor->peer_limit())
+    {
+        return;
+    }
+#endif
 
     auto const now = tr_time();
     auto* const session = mgr->session;
