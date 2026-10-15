@@ -449,10 +449,11 @@ public:
         bool speed_limit_up_enabled = false;
         bool tcp_enabled = true;
         bool torrent_complete_verify_enabled = false;
-        bool utp_enabled = true;
 #ifdef HAVE_NDM
+        bool utp_enabled = false;
         double ratio_limit = 1.5;
 #else
+        bool utp_enabled = true;
         double ratio_limit = 2.0;
 #endif
         size_t cache_size_mbytes = 4U;
