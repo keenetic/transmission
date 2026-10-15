@@ -24,6 +24,9 @@
 #include "libtransmission/utils-ev.h"
 
 class tr_rpc_address;
+#ifdef HAVE_NDM
+struct ndm_core_t;
+#endif
 struct tr_session;
 struct tr_variant;
 struct libdeflate_compressor;
@@ -209,4 +212,7 @@ public:
 
     size_t login_attempts_ = 0U;
     int start_retry_counter = 0;
+#ifdef HAVE_NDM
+    ndm_core_t* ndm_core_ = nullptr;
+#endif
 };

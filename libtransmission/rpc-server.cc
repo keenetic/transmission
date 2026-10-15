@@ -32,6 +32,10 @@
 
 #include <libdeflate.h>
 
+#ifdef HAVE_NDM
+#include <ndm/core.h>
+#endif
+
 #include "libtransmission/transmission.h"
 
 #include "libtransmission/crypto-utils.h" /* tr_ssha1_matches() */
@@ -56,7 +60,9 @@ struct evbuffer;
  * https://en.wikipedia.org/wiki/Cross-site_request_forgery
  * https://shiflett.org/articles/cross-site-request-forgeries
  * http://www.webappsec.org/lists/websecurity/archive/2008-04/msg00037.html */
+#ifndef HAVE_NDM
 #define REQUIRE_SESSION_ID
+#endif
 
 #define MY_REALM "Transmission"
 
@@ -65,6 +71,12 @@ using namespace std::literals;
 namespace
 {
 auto constexpr TrUnixSocketPrefix = "unix:"sv;
+#ifdef HAVE_NDM
+auto constexpr NdmLocalAuthTimeout = 500;
+auto constexpr NdmCoreCacheMaxSize = 4096;
+auto constexpr NdmLocalUsernameSize = 32U;
+auto constexpr NdmLocalPasswordSize = 32U;
+#endif
 
 /* The maximum size of a unix socket path is defined per-platform based on sockaddr_un.sun_path.
  * On Windows the fallback is the length of an ipv6 address. Subtracting one at the end is for
@@ -501,7 +513,7 @@ bool test_session_id(tr_rpc_server const* server, evhttp_request* const req)
     return session_id != nullptr && server->session->sessionId() == session_id;
 }
 
-bool is_authorized(tr_rpc_server const* server, char const* auth_header)
+bool is_authorized(tr_rpc_server const* server, char const* auth_header, bool is_local)
 {
     if (!server->is_password_enabled())
     {
@@ -510,7 +522,6 @@ bool is_authorized(tr_rpc_server const* server, char const* auth_header)
 
     // https://datatracker.ietf.org/doc/html/rfc7617
     // `Basic ${base64(username)}:${base64(password)}`
-
     auto constexpr Prefix = "Basic "sv;
     auto auth = std::string_view{ auth_header != nullptr ? auth_header : "" };
     if (!tr_strv_starts_with(auth, Prefix))
@@ -523,7 +534,67 @@ bool is_authorized(tr_rpc_server const* server, char const* auth_header)
     auto decoded = std::string_view{ decoded_str };
     auto const username = tr_strv_sep(&decoded, ':');
     auto const password = decoded;
+
+#ifdef HAVE_NDM
+    if (server->ndm_core_ == nullptr)
+    {
+        return false;
+    }
+
+    auto username_buf = std::string{ username };
+    auto password_buf = std::string{ password };
+
+    // Keep local torrent credentials fresh. The old NDM integration cached
+    // successful remote accounts and invalidated them on Event::Type::User;
+    // authenticating each request avoids stale credentials without changing
+    // externally-visible authentication semantics.
+    ndm_core_cache_clear(server->ndm_core_, true);
+
+    if (is_local)
+    {
+        auto local_username = std::array<char, NdmLocalUsernameSize + 1U>{};
+        auto local_password = std::array<char, NdmLocalPasswordSize + 1U>{};
+
+        if (ndm_core_request_first_str_buffer_cf(
+                server->ndm_core_,
+                NDM_CORE_REQUEST_PARSE,
+                NDM_CORE_MODE_CACHE,
+                std::data(local_username),
+                std::size(local_username),
+                nullptr,
+                "local-account/username",
+                nullptr,
+                "show torrent local-account") == NDM_CORE_RESPONSE_ERROR_OK &&
+            local_username.front() != '\0' &&
+            ndm_core_request_first_str_buffer_cf(
+                server->ndm_core_,
+                NDM_CORE_REQUEST_PARSE,
+                NDM_CORE_MODE_CACHE,
+                std::data(local_password),
+                std::size(local_password),
+                nullptr,
+                "local-account/password",
+                nullptr,
+                "show torrent local-account") == NDM_CORE_RESPONSE_ERROR_OK &&
+            local_password.front() != '\0' && username == std::data(local_username) && password == std::data(local_password))
+        {
+            return true;
+        }
+    }
+
+    bool authenticated = false;
+    return ndm_core_authenticate(
+               server->ndm_core_,
+               "transmission",
+               username_buf.c_str(),
+               password_buf.c_str(),
+               "torrent",
+               &authenticated) &&
+        authenticated;
+#else
+    (void)is_local;
     return server->username() == username && tr_ssha1_matches(server->settings().salted_password, password);
+#endif
 }
 
 void handle_request(struct evhttp_request* req, void* arg)
@@ -551,6 +622,12 @@ void handle_request(struct evhttp_request* req, void* arg)
 #endif
     auto remote_port = ev_uint16_t{};
     evhttp_connection_get_peer(con, &remote_host, &remote_port);
+#ifdef HAVE_NDM
+    bool const is_local = remote_host != nullptr &&
+        (std::strcmp(remote_host, "127.0.0.1") == 0 || std::strcmp(remote_host, "::1") == 0);
+#else
+    bool constexpr is_local = false;
+#endif
 
     auto* const output_headers = evhttp_request_get_output_headers(req);
     evhttp_add_header(output_headers, "Server", MY_REALM);
@@ -581,7 +658,7 @@ void handle_request(struct evhttp_request* req, void* arg)
         return;
     }
 
-    if (!is_authorized(server, evhttp_find_header(input_headers, "Authorization")))
+    if (!is_authorized(server, evhttp_find_header(input_headers, "Authorization"), is_local))
     {
         tr_logAddWarn(
             fmt::format(
@@ -834,6 +911,9 @@ void start_server(tr_rpc_server* server)
     }
     else
     {
+#ifdef HAVE_NDM
+        server->ndm_core_ = ndm_core_open("transmission/ci", NdmLocalAuthTimeout, NdmCoreCacheMaxSize);
+#endif
         evhttp_set_gencb(httpd, handle_request, server);
         server->httpd.reset(httpd);
 
@@ -851,6 +931,12 @@ void stop_server(tr_rpc_server* server)
     auto const lock = server->session->unique_lock();
 
     rpc_server_start_retry_cancel(server);
+#ifdef HAVE_NDM
+    if (server->ndm_core_ != nullptr)
+    {
+        ndm_core_close(&server->ndm_core_);
+    }
+#endif
 
     auto& httpd = server->httpd;
     if (!httpd)

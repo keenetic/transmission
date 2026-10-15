@@ -217,6 +217,8 @@ tr_allow_compile_if(
         subprocess-posix.cc)
 
 target_compile_definitions(${TR_NAME}
+    PUBLIC
+        $<$<BOOL:${WITH_NDM}>:HAVE_NDM>
     PRIVATE
         __TRANSMISSION__
         WIDE_INTEGER_DISABLE_FLOAT_INTEROP
@@ -290,6 +292,7 @@ endif()
 
 target_link_libraries(${TR_NAME}
     PRIVATE
+        $<$<BOOL:${WITH_NDM}>:NDM::NDM>
         Threads::Threads
         deflate::deflate
         CURL::libcurl
