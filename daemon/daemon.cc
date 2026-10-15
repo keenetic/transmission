@@ -664,7 +664,15 @@ bool tr_daemon::parse_args(int argc, char const* const* argv, bool* dump_setting
             break;
 
         case 'w':
+#ifdef HAVE_NDM
+            if (auto const current = map->value_if<std::string_view>(TR_KEY_download_dir);
+                !current || std::empty(*current) || *current == tr_getDefaultDownloadDir())
+            {
+                map->insert_or_assign(TR_KEY_download_dir, optstr);
+            }
+#else
             map->insert_or_assign(TR_KEY_download_dir, optstr);
+#endif
             break;
 
         case 'P':
