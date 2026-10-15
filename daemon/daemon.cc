@@ -69,7 +69,11 @@ using libtransmission::Watchdir;
 
 namespace
 {
+#ifdef HAVE_NDM
+char constexpr MyName[] = "transmissiond";
+#else
 char constexpr MyName[] = "transmission-daemon";
+#endif
 char constexpr Usage[] = "Transmission " LONG_VERSION_STRING
                          "  https://transmissionbt.com/\n"
                          "A fast and easy BitTorrent client\n"
@@ -301,6 +305,18 @@ void printMessage(
 {
     auto out = tr_strbuf<char, 2048U>{};
 
+#ifdef HAVE_NDM
+    (void)filename;
+    (void)line;
+    if (std::empty(name))
+    {
+        fmt::format_to(std::back_inserter(out), "{:s}", message);
+    }
+    else
+    {
+        fmt::format_to(std::back_inserter(out), "{:s} {:s}", name, message);
+    }
+#else
     if (std::empty(name))
     {
         fmt::format_to(std::back_inserter(out), "{:s} ({:s}:{:d})", message, filename, line);
@@ -309,6 +325,7 @@ void printMessage(
     {
         fmt::format_to(std::back_inserter(out), "{:s} {:s} ({:s}:{:d})", name, message, filename, line);
     }
+#endif
 
     if (ostream != nullptr)
     {
