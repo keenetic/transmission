@@ -9,6 +9,13 @@
 #include <string_view>
 #include <utility>
 
+#ifdef HAVE_NDM
+#ifndef _WIN32
+#include <sys/ioctl.h>
+#include <unistd.h>
+#endif
+#endif
+
 #include <fmt/format.h>
 
 #include "libtransmission/transmission.h"
@@ -29,6 +36,70 @@ namespace
 {
     return fd != TR_BAD_SYS_FILE;
 }
+
+#if defined(HAVE_NDM) && !defined(_WIN32)
+#define TUXERA_IOCTL_FALLOCATE_FL_KEEP_SIZE 0x0001
+#define TUXERA_IOCTL_FALLOCATE_SKIP_ZEROING 0x1000
+struct __attribute__((packed)) TuxeraFallocateArgs
+{
+    uint64_t offset;
+    uint64_t length;
+    uint32_t mode;
+};
+#define TUXERA_IOCTL_FALLOCATE _IOW('N', 213, TuxeraFallocateArgs)
+
+bool ndm_tuxera_fallocate(tr_sys_file_t const fd, uint64_t const length)
+{
+    auto args = TuxeraFallocateArgs{ 0U, length, TUXERA_IOCTL_FALLOCATE_SKIP_ZEROING };
+    return ioctl(fd, TUXERA_IOCTL_FALLOCATE, &args) == 0;
+}
+
+bool preallocate_file_ndm(tr_sys_file_t const fd, uint64_t length, tr_error* error)
+{
+    if (length == 0U)
+    {
+        return true;
+    }
+
+    errno = 0;
+    if (ndm_tuxera_fallocate(fd, length))
+    {
+        return true;
+    }
+
+    auto local_error = tr_error{};
+    if (tr_sys_file_preallocate(fd, length, 0, &local_error))
+    {
+        return true;
+    }
+
+    local_error = {};
+    if (tr_sys_file_truncate(fd, length, &local_error))
+    {
+        return true;
+    }
+
+    auto const zeros = std::array<uint8_t, 4096>{};
+    uint64_t offset = 0U;
+    local_error = {};
+    while (offset < length)
+    {
+        auto const n = std::min<uint64_t>(length - offset, std::size(zeros));
+        uint64_t written = 0U;
+        if (!tr_sys_file_write_at(fd, std::data(zeros), n, offset, &written, &local_error) || written != n)
+        {
+            if (error != nullptr)
+            {
+                *error = std::move(local_error);
+            }
+            return false;
+        }
+        offset += written;
+    }
+
+    return true;
+}
+#endif
 
 bool preallocate_file_sparse(tr_sys_file_t fd, uint64_t length, tr_error* error)
 {
@@ -203,6 +274,10 @@ std::optional<tr_sys_file_t> tr_open_files::get(
         bool success = false;
         char const* type = nullptr;
 
+#if defined(HAVE_NDM) && !defined(_WIN32)
+        success = preallocate_file_ndm(fd, file_size, &error);
+        type = "ndm-sparse";
+#else
         if (allocation == Preallocation::Full)
         {
             success = preallocate_file_full(fd, file_size, &error);
@@ -213,6 +288,7 @@ std::optional<tr_sys_file_t> tr_open_files::get(
             success = preallocate_file_sparse(fd, file_size, &error);
             type = "sparse";
         }
+#endif
 
         TR_ASSERT(type != nullptr);
 
