@@ -15,7 +15,8 @@ tr_allow_compile_if(
 
 target_compile_definitions(${TR_NAME}-daemon
     PRIVATE
-        $<$<BOOL:${WITH_SYSTEMD}>:WITH_SYSTEMD>)
+        $<$<BOOL:${WITH_SYSTEMD}>:WITH_SYSTEMD>
+        $<$<BOOL:${WITH_LIBFATALSIG}>:HAVE_LIBFATALSIG>)
 
 tr_target_compile_definitions_for_headers(${TR_NAME}-daemon
     PRIVATE
@@ -28,7 +29,8 @@ tr_target_compile_definitions_for_functions(${TR_NAME}-daemon
 
 target_include_directories(${TR_NAME}-daemon SYSTEM
     PRIVATE
-        $<$<BOOL:${WITH_SYSTEMD}>:${SYSTEMD_INCLUDE_DIRS}>)
+        $<$<BOOL:${WITH_SYSTEMD}>:${SYSTEMD_INCLUDE_DIRS}>
+        $<$<BOOL:${WITH_LIBFATALSIG}>:${LIBFATALSIG_INCLUDE_DIR}>)
 
 if(ENABLE_EMBEDDED_SIZE_OPTIMIZATIONS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_definitions(${TR_NAME}-daemon PRIVATE TR_EMBEDDED_SIZE_OPTIMIZATIONS FMT_USE_LOCALE=0)
@@ -60,7 +62,8 @@ target_link_libraries(${TR_NAME}-daemon
         ${TR_NAME}
         libevent::event
         fmt::fmt-header-only
-        $<$<BOOL:${WITH_SYSTEMD}>:${SYSTEMD_LIBRARIES}>)
+        $<$<BOOL:${WITH_SYSTEMD}>:${SYSTEMD_LIBRARIES}>
+        $<$<BOOL:${WITH_LIBFATALSIG}>:${LIBFATALSIG_LIBRARY}>)
 
 tr_win32_app_info(${TR_NAME}-daemon
     "Transmission Daemon"

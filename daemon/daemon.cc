@@ -29,6 +29,10 @@
 
 #include <fmt/format.h>
 
+#ifdef HAVE_LIBFATALSIG
+#include <fatalsig.h>
+#endif
+
 #include <libtransmission/transmission.h>
 
 #include <libtransmission/error.h>
@@ -1190,6 +1194,15 @@ int tr_main(int argc, char* argv[])
     auto foreground = bool{};
     auto ret = int{};
     auto daemon = tr_daemon{};
+#ifdef HAVE_LIBFATALSIG
+    if (fatalsig_init() != 0)
+    {
+        auto error = tr_error{};
+        error.set(EINVAL, "Failed to setup fatal signal handlers");
+        daemon.handle_error(error);
+        return 1;
+    }
+#endif
     if (!daemon.init(argc, argv, &foreground, &ret))
     {
         return ret;
