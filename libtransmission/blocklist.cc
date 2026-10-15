@@ -7,11 +7,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <fstream>
 #include <initializer_list>
-#include <ios>
 #include <optional>
-#include <string> // std::getline()
+#include <string>
 #include <string_view>
 #include <utility> // for std::move, std::pair
 #include <vector>
@@ -29,6 +27,7 @@
 #include "libtransmission/transmission.h"
 
 #include "libtransmission/blocklist.h"
+#include "libtransmission/error-types.h"
 #include "libtransmission/error.h"
 #include "libtransmission/file.h"
 #include "libtransmission/log.h"
@@ -53,29 +52,87 @@ auto constexpr BinFileSuffix = std::string_view{ ".bin" };
 
 using address_range_t = std::pair<tr_address, tr_address>;
 
+bool readExact(tr_sys_file_t fd, void* buffer, uint64_t size, tr_error* error)
+{
+    auto* out = static_cast<std::byte*>(buffer);
+    auto total = uint64_t{};
+    while (total < size)
+    {
+        auto n_read = uint64_t{};
+        if (!tr_sys_file_read(fd, out + total, size - total, &n_read, error))
+        {
+            return false;
+        }
+        if (n_read == 0U)
+        {
+            if (error != nullptr)
+            {
+                error->set(TR_ERROR_EINVAL, "Unexpected end of file");
+            }
+            return false;
+        }
+        total += n_read;
+    }
+    return true;
+}
+
+bool writeAll(tr_sys_file_t fd, void const* buffer, uint64_t size, tr_error* error)
+{
+    auto const* in = static_cast<std::byte const*>(buffer);
+    auto total = uint64_t{};
+    while (total < size)
+    {
+        auto n_written = uint64_t{};
+        if (!tr_sys_file_write(fd, in + total, size - total, &n_written, error))
+        {
+            return false;
+        }
+        if (n_written == 0U)
+        {
+            if (error != nullptr)
+            {
+                error->set(TR_ERROR_EINVAL, "Short write");
+            }
+            return false;
+        }
+        total += n_written;
+    }
+    return true;
+}
+
 void save(std::string_view filename, address_range_t const* ranges, size_t n_ranges)
 {
-    auto out = std::ofstream{ tr_pathbuf{ filename }, std::ios_base::out | std::ios_base::trunc | std::ios_base::binary };
-    if (!out.is_open())
-    {
-        tr_logAddWarn(
-            fmt::format(
-                fmt::runtime(_("Couldn't read '{path}': {error} ({error_code})")),
-                fmt::arg("path", filename),
-                fmt::arg("error", tr_strerror(errno)),
-                fmt::arg("error_code", errno)));
-        return;
-    }
-
-    if (!out.write(std::data(BinContentsPrefix), std::size(BinContentsPrefix)) ||
-        !out.write(reinterpret_cast<char const*>(ranges), n_ranges * sizeof(*ranges)))
+    auto error = tr_error{};
+    auto const path = tr_pathbuf{ filename };
+    auto const fd = tr_sys_file_open(
+        path.c_str(),
+        TR_SYS_FILE_WRITE | TR_SYS_FILE_CREATE | TR_SYS_FILE_TRUNCATE | TR_SYS_FILE_SEQUENTIAL,
+        0666,
+        &error);
+    if (fd == TR_BAD_SYS_FILE)
     {
         tr_logAddWarn(
             fmt::format(
                 fmt::runtime(_("Couldn't save '{path}': {error} ({error_code})")),
                 fmt::arg("path", filename),
-                fmt::arg("error", tr_strerror(errno)),
-                fmt::arg("error_code", errno)));
+                fmt::arg("error", error.message()),
+                fmt::arg("error_code", error.code())));
+        return;
+    }
+
+    auto const ranges_size = static_cast<uint64_t>(n_ranges) * sizeof(*ranges);
+    auto const ok = writeAll(fd, std::data(BinContentsPrefix), std::size(BinContentsPrefix), &error) &&
+        writeAll(fd, ranges, ranges_size, &error);
+    tr_sys_file_close(fd);
+
+    if (!ok)
+    {
+        tr_logAddWarn(
+            fmt::format(
+                fmt::runtime(_("Couldn't save '{path}': {error} ({error_code})")),
+                fmt::arg("path", filename),
+                fmt::arg("error", error.message()),
+                fmt::arg("error_code", error.code())));
     }
     else
     {
@@ -86,8 +143,6 @@ void save(std::string_view filename, address_range_t const* ranges, size_t n_ran
                 fmt::arg("path", tr_sys_path_basename(filename)),
                 fmt::arg("count", n_ranges)));
     }
-
-    out.close();
 }
 
 namespace ParseHelpers
@@ -237,24 +292,31 @@ auto parseFile(std::string_view filename)
 
     auto ranges = std::vector<address_range_t>{};
 
-    auto in = std::ifstream{ tr_pathbuf{ filename } };
-    if (!in.is_open())
+    auto error = tr_error{};
+    auto const path = tr_pathbuf{ filename };
+    auto const fd = tr_sys_file_open(path.c_str(), TR_SYS_FILE_READ | TR_SYS_FILE_SEQUENTIAL, 0, &error);
+    if (fd == TR_BAD_SYS_FILE)
     {
         tr_logAddWarn(
             fmt::format(
                 fmt::runtime(_("Couldn't read '{path}': {error} ({error_code})")),
                 fmt::arg("path", filename),
-                fmt::arg("error", tr_strerror(errno)),
-                fmt::arg("error_code", errno)));
+                fmt::arg("error", error.message()),
+                fmt::arg("error_code", error.code())));
         return ranges;
     }
 
     auto line = std::string{};
     auto line_number = size_t{ 0U };
-    while (std::getline(in, line))
+    auto const parse_line = [&](std::string_view sv)
     {
         ++line_number;
-        if (auto range = parseLine(line); range && (range->first.type == range->second.type))
+        if (!std::empty(sv) && sv.back() == '\r')
+        {
+            sv.remove_suffix(1);
+        }
+
+        if (auto range = parseLine(sv); range && (range->first.type == range->second.type))
         {
             ranges.push_back(*range);
         }
@@ -263,8 +325,59 @@ auto parseFile(std::string_view filename)
             // don't try to display the actual lines - it causes issues
             tr_logAddWarn(fmt::format(fmt::runtime(_("Couldn't parse line: '{line}'")), fmt::arg("line", line_number)));
         }
+    };
+
+    auto buf = std::array<char, 8192>{};
+    auto read_ok = true;
+    for (;;)
+    {
+        auto n_read = uint64_t{};
+        if (!tr_sys_file_read(fd, std::data(buf), std::size(buf), &n_read, &error))
+        {
+            tr_logAddWarn(
+                fmt::format(
+                    fmt::runtime(_("Couldn't read '{path}': {error} ({error_code})")),
+                    fmt::arg("path", filename),
+                    fmt::arg("error", error.message()),
+                    fmt::arg("error_code", error.code())));
+            read_ok = false;
+            break;
+        }
+        if (n_read == 0U)
+        {
+            break;
+        }
+
+        auto const* begin = std::data(buf);
+        auto const* const end = begin + n_read;
+        while (begin != end)
+        {
+            auto const* const eol = std::find(begin, end, '\n');
+            if (eol == end)
+            {
+                line.append(begin, end);
+                break;
+            }
+
+            if (std::empty(line))
+            {
+                parse_line(std::string_view{ begin, static_cast<size_t>(eol - begin) });
+            }
+            else
+            {
+                line.append(begin, eol);
+                parse_line(line);
+                line.clear();
+            }
+            begin = eol + 1;
+        }
     }
-    in.close();
+
+    if (read_ok && !std::empty(line))
+    {
+        parse_line(line);
+    }
+    tr_sys_file_close(fd);
 
     if (std::empty(ranges))
     {
@@ -352,15 +465,16 @@ void Blocklists::Blocklist::ensureLoaded() const
     }
 
     // open the file
-    auto in = std::ifstream{ bin_file_, std::ios_base::in | std::ios_base::binary };
-    if (!in)
+    error = {};
+    auto const fd = tr_sys_file_open(bin_file_.c_str(), TR_SYS_FILE_READ | TR_SYS_FILE_SEQUENTIAL, 0, &error);
+    if (fd == TR_BAD_SYS_FILE)
     {
         tr_logAddWarn(
             fmt::format(
                 fmt::runtime(_("Couldn't read '{path}': {error} ({error_code})")),
                 fmt::arg("path", bin_file_),
-                fmt::arg("error", tr_strerror(errno)),
-                fmt::arg("error_code", errno)));
+                fmt::arg("error", error.message()),
+                fmt::arg("error_code", error.code())));
         return;
     }
 
@@ -377,14 +491,14 @@ void Blocklists::Blocklist::ensureLoaded() const
     else
     {
         auto tmp = std::array<char, std::size(BinContentsPrefix)>{};
-        in.read(std::data(tmp), std::size(tmp));
-        supported_file = BinContentsPrefix == std::string_view{ std::data(tmp), std::size(tmp) };
+        supported_file = readExact(fd, std::data(tmp), std::size(tmp), &error) &&
+            BinContentsPrefix == std::string_view{ std::data(tmp), std::size(tmp) };
     }
 
     if (!supported_file)
     {
         // bad binary file; try to rebuild it
-        in.close();
+        tr_sys_file_close(fd);
         if (auto const sz_src_file = std::string{ std::data(bin_file_), std::size(bin_file_) - std::size(BinFileSuffix) };
             tr_sys_path_exists(sz_src_file))
         {
@@ -399,12 +513,28 @@ void Blocklists::Blocklist::ensureLoaded() const
         return;
     }
 
-    auto range = address_range_t{};
-    rules_.reserve((file_info->size - std::size(BinContentsPrefix)) / sizeof(address_range_t));
-    while (in.read(reinterpret_cast<char*>(&range), sizeof(range)))
+    auto const n_rules64 = (file_info->size - std::size(BinContentsPrefix)) / sizeof(address_range_t);
+    if (n_rules64 > rules_.max_size())
     {
-        rules_.emplace_back(range);
+        tr_sys_file_close(fd);
+        tr_logAddWarn(fmt::format(fmt::runtime(_("Blocklist '{path}' is too large")), fmt::arg("path", bin_file_)));
+        return;
     }
+
+    auto const n_rules = static_cast<size_t>(n_rules64);
+    rules_.resize(n_rules);
+    if (n_rules != 0U &&
+        !readExact(fd, std::data(rules_), static_cast<uint64_t>(n_rules) * sizeof(address_range_t), &error))
+    {
+        rules_.clear();
+        tr_logAddWarn(
+            fmt::format(
+                fmt::runtime(_("Couldn't read '{path}': {error} ({error_code})")),
+                fmt::arg("path", bin_file_),
+                fmt::arg("error", error.message()),
+                fmt::arg("error_code", error.code())));
+    }
+    tr_sys_file_close(fd);
 
     tr_logAddInfo(
         fmt::format(

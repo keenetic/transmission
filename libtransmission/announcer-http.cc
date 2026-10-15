@@ -7,9 +7,8 @@
 #include <cctype>
 #include <cstddef> // std::byte, size_t
 #include <cstdint> // int64_t, uint8_t, uint...
+#include <cstdio>
 #include <ctime>
-#include <iomanip>
-#include <iostream>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -53,22 +52,43 @@ void verboseLog(std::string_view description, tr_direction direction, std::strin
     }
 
     auto const direction_sv = direction == TR_DOWN ? "<< "sv : ">> "sv;
-    auto& out = std::cerr;
-    out << description << '\n' << "[raw]"sv << direction_sv;
+
+    auto const write = [](std::string_view sv)
+    {
+        std::fwrite(std::data(sv), 1U, std::size(sv), stderr);
+    };
+
+    static constexpr char Hex[] = "0123456789abcdef";
+
+    write(description);
+    std::fputc('\n', stderr);
+    write("[raw]"sv);
+    write(direction_sv);
+
     for (unsigned char const ch : message)
     {
         if (isprint(ch) != 0)
         {
-            out << ch;
+            std::fputc(ch, stderr);
         }
         else
         {
-            out << R"(\x)" << std::hex << std::setw(2) << std::setfill('0') << unsigned(ch) << std::dec << std::setw(1)
-                << std::setfill(' ');
+            write(R"(\x)"sv);
+            std::fputc(Hex[ch >> 4U], stderr);
+            std::fputc(Hex[ch & 0x0FU], stderr);
         }
     }
-    out << '\n' << "[b64]"sv << direction_sv << tr_base64_encode(message) << '\n';
+
+    std::fputc('\n', stderr);
+    write("[b64]"sv);
+    write(direction_sv);
+
+    auto const encoded = tr_base64_encode(message);
+    write(encoded);
+
+    std::fputc('\n', stderr);
 }
+
 
 auto constexpr MaxBencDepth = 8;
 } // namespace

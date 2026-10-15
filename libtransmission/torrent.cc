@@ -10,13 +10,11 @@
 #include <cstddef> // size_t
 #include <ctime>
 #include <map>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
-#include <fmt/chrono.h>
 #include <fmt/format.h>
 
 #include "libtransmission/transmission.h"
@@ -361,36 +359,39 @@ namespace script_helpers
 {
 [[nodiscard]] std::string build_labels_string(tr_torrent::labels_t const& labels)
 {
-    auto buf = std::stringstream{};
+    auto buf = std::string{};
 
     for (auto it = std::begin(labels), end = std::end(labels); it != end;)
     {
-        buf << it->sv();
+        auto const sv = it->sv();
+        buf.append(std::data(sv), std::size(sv));
 
         if (++it != end)
         {
-            buf << ',';
+            buf.push_back(',');
         }
     }
 
-    return buf.str();
+    return buf;
 }
 
 [[nodiscard]] std::string buildTrackersString(tr_torrent const* tor)
 {
-    auto buf = std::stringstream{};
+    auto buf = std::string{};
 
     for (size_t i = 0, n = tr_torrentTrackerCount(tor); i < n; ++i)
     {
-        buf << tr_torrentTracker(tor, i).host_and_port;
+        auto const& host = tr_torrentTracker(tor, i).host_and_port;
+        buf.append(std::data(host), std::size(host));
 
+        // Preserve current Transmission behaviour: trailing comma included.
         if (i < n)
         {
-            buf << ',';
+            buf.push_back(',');
         }
     }
 
-    return buf.str();
+    return buf;
 }
 
 void torrentCallScript(tr_torrent const* tor, std::string const& script)
@@ -411,7 +412,24 @@ void torrentCallScript(tr_torrent const* tor, std::string const& script)
     auto const labels_str = build_labels_string(tor->labels());
     auto const trackers_str = buildTrackersString(tor);
     auto const bytes_downloaded_str = std::to_string(tor->bytes_downloaded_.ever());
-    auto const localtime_str = fmt::format("{:%a %b %d %T %Y%n}", *std::localtime(&now));
+
+    auto const tm = *std::localtime(&now);
+    static constexpr std::array<std::string_view, 7> Weekdays = { "Sun"sv, "Mon"sv, "Tue"sv, "Wed"sv,
+                                                                  "Thu"sv, "Fri"sv, "Sat"sv };
+    static constexpr std::array<std::string_view, 12> Months = { "Jan"sv, "Feb"sv, "Mar"sv, "Apr"sv,
+                                                                 "May"sv, "Jun"sv, "Jul"sv, "Aug"sv,
+                                                                 "Sep"sv, "Oct"sv, "Nov"sv, "Dec"sv };
+    auto const weekday = 0 <= tm.tm_wday && tm.tm_wday < static_cast<int>(std::size(Weekdays)) ? Weekdays[tm.tm_wday] : "???"sv;
+    auto const month = 0 <= tm.tm_mon && tm.tm_mon < static_cast<int>(std::size(Months)) ? Months[tm.tm_mon] : "???"sv;
+    auto const localtime_str = fmt::format(
+        "{} {} {:02d} {:02d}:{:02d}:{:02d} {:04d}\n",
+        weekday,
+        month,
+        tm.tm_mday,
+        tm.tm_hour,
+        tm.tm_min,
+        tm.tm_sec,
+        tm.tm_year + 1900);
     auto const priority_str = std::to_string(tor->get_priority());
 
     auto const env = std::map<std::string_view, std::string_view>{

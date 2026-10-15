@@ -212,19 +212,31 @@ public:
         {
             if (std::fabs(val - std::floor(val)) < 0.001 && (val < 999.5 || std::empty(units_.display_name(idx + 1))))
             {
+#ifdef TR_EMBEDDED_SIZE_OPTIMIZATIONS
+                *fmt::format_to_n(buf, buflen - 1, "{:.0f} {:s}", val, units_.display_name(idx)).out = '\0';
+#else
                 *fmt::format_to_n(buf, buflen - 1, "{:.0Lf} {:s}", val, units_.display_name(idx)).out = '\0';
+#endif
                 return buf;
             }
 
             if (val < 99.995) // 0.98 to 99.99
             {
+#ifdef TR_EMBEDDED_SIZE_OPTIMIZATIONS
+                *fmt::format_to_n(buf, buflen - 1, "{:.2f} {:s}", val, units_.display_name(idx)).out = '\0';
+#else
                 *fmt::format_to_n(buf, buflen - 1, "{:.2Lf} {:s}", val, units_.display_name(idx)).out = '\0';
+#endif
                 return buf;
             }
 
             if (val < 999.95 || std::empty(units_.display_name(idx + 1))) // 100.0 to 999.9
             {
+#ifdef TR_EMBEDDED_SIZE_OPTIMIZATIONS
+                *fmt::format_to_n(buf, buflen - 1, "{:.1f} {:s}", val, units_.display_name(idx)).out = '\0';
+#else
                 *fmt::format_to_n(buf, buflen - 1, "{:.1Lf} {:s}", val, units_.display_name(idx)).out = '\0';
+#endif
                 return buf;
             }
 

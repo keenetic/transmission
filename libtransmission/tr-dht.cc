@@ -2,6 +2,7 @@
 // It may be used under the MIT (SPDX: MIT) license.
 // License text can be found in the licenses/ folder.
 
+#include <charconv>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -10,10 +11,8 @@
 #include <cstring> // memcpy()
 #include <ctime>
 #include <deque>
-#include <fstream>
 #include <map>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <tuple> // std::tie()
@@ -532,34 +531,99 @@ private:
 
     static void get_nodes_from_bootstrap_file(std::string_view filename, Nodes& nodes)
     {
-        auto in = std::ifstream{ std::string{ filename } };
-        if (!in.is_open())
+        auto const path = tr_pathbuf{ filename };
+        auto const fd = tr_sys_file_open(path.c_str(), TR_SYS_FILE_READ | TR_SYS_FILE_SEQUENTIAL, 0);
+        if (fd == TR_BAD_SYS_FILE)
         {
             return;
         }
 
-        // format is each line has host, a space char, and port number
-        auto line = std::string{};
-        while (std::getline(in, line))
+        auto const parse_line = [&nodes, filename](std::string_view line)
         {
-            auto line_stream = std::istringstream{ line };
-            auto addrstr = std::string{};
-            auto hport = uint16_t{};
-            line_stream >> addrstr >> hport;
+            if (!std::empty(line) && line.back() == '\r')
+            {
+                line.remove_suffix(1);
+            }
 
-            if (line_stream.bad() || std::empty(addrstr))
+            auto const original_line = line;
+            auto const begin = line.find_first_not_of(" \t");
+            if (begin == std::string_view::npos)
             {
                 tr_logAddWarn(
                     fmt::format(
                         fmt::runtime(_("Couldn't parse '{filename}' line: '{line}'")),
                         fmt::arg("filename", filename),
-                        fmt::arg("line", line)));
+                        fmt::arg("line", original_line)));
+                return;
             }
-            else
+            line.remove_prefix(begin);
+
+            auto const sep = line.find_first_of(" \t");
+            auto const addr_sv = line.substr(0, sep);
+            auto hport = uint16_t{};
+
+            if (sep != std::string_view::npos)
             {
-                get_nodes_from_name(addrstr.c_str(), tr_port::from_host(hport), nodes);
+                auto port_sv = line.substr(sep);
+                auto const port_begin = port_sv.find_first_not_of(" \t");
+                if (port_begin != std::string_view::npos)
+                {
+                    port_sv.remove_prefix(port_begin);
+                    auto const [ptr, ec] = std::from_chars(
+                        std::data(port_sv),
+                        std::data(port_sv) + std::size(port_sv),
+                        hport);
+                    if (ec != std::errc{} || ptr == std::data(port_sv))
+                    {
+                        hport = 0U;
+                    }
+                }
+            }
+
+            auto const addrstr = std::string{ addr_sv };
+            get_nodes_from_name(addrstr.c_str(), tr_port::from_host(hport), nodes);
+        };
+
+        auto buf = std::array<char, 4096>{};
+        auto line = std::string{};
+        for (;;)
+        {
+            auto n_read = uint64_t{};
+            if (!tr_sys_file_read(fd, std::data(buf), std::size(buf), &n_read) || n_read == 0U)
+            {
+                break;
+            }
+
+            auto const* begin = std::data(buf);
+            auto const* const end = begin + n_read;
+            while (begin != end)
+            {
+                auto const* const eol = std::find(begin, end, '\n');
+                if (eol == end)
+                {
+                    line.append(begin, end);
+                    break;
+                }
+
+                if (std::empty(line))
+                {
+                    parse_line(std::string_view{ begin, static_cast<size_t>(eol - begin) });
+                }
+                else
+                {
+                    line.append(begin, eol);
+                    parse_line(line);
+                    line.clear();
+                }
+                begin = eol + 1;
             }
         }
+
+        if (!std::empty(line))
+        {
+            parse_line(line);
+        }
+        tr_sys_file_close(fd);
     }
 
     static void get_nodes_from_name(char const* name, tr_port port_in, Nodes& nodes)

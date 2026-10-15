@@ -161,6 +161,7 @@ target_sources(${TR_NAME}
         utils-ev.cc
         utils-ev.h
         utils.cc
+        utils-locale.cc
         utils.h
         $<$<BOOL:${IS_APPLE_CLANG}>:utils.mm>
         variant-benc.cc
@@ -267,6 +268,24 @@ target_include_directories(${TR_NAME} SYSTEM
 
 if(ANDROID)
     find_library(log-lib log)
+endif()
+
+if(ENABLE_EMBEDDED_SIZE_OPTIMIZATIONS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_definitions(${TR_NAME} PRIVATE TR_EMBEDDED_SIZE_OPTIMIZATIONS FMT_USE_LOCALE=0)
+
+    target_compile_options(${TR_NAME} PRIVATE
+        -ffunction-sections
+        -fdata-sections
+        -fexceptions
+        -frtti
+        -fvisibility=hidden
+        -fvisibility-inlines-hidden
+        -fno-semantic-interposition
+        $<$<CONFIG:MinSizeRel>:-Oz>)
+
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(${TR_NAME} PRIVATE -fipa-pta -flto-partition=one)
+    endif()
 endif()
 
 target_link_libraries(${TR_NAME}

@@ -7,8 +7,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
-#include <fstream>
-#include <ios>
 #include <memory>
 #include <optional>
 #include <string>
@@ -101,26 +99,40 @@ void tr_torrent::maybe_start_metadata_transfer(int64_t const size) noexcept
         return {};
     }
 
-    auto in = std::ifstream{ torrent_file(), std::ios_base::in | std::ios_base::binary };
-    if (!in.is_open())
-    {
-        return {};
-    }
     auto const offset_in_info_dict = piece * MetadataPieceSize;
-    if (auto const offset_in_file = info_dict_offset() + offset_in_info_dict; !in.seekg(offset_in_file))
-    {
-        return {};
-    }
-
+    auto const offset_in_file = info_dict_offset() + offset_in_info_dict;
     auto const piece_len = static_cast<size_t>(offset_in_info_dict + MetadataPieceSize) <= info_dict_size ?
         MetadataPieceSize :
         info_dict_size - offset_in_info_dict;
-    if (auto ret = tr_metadata_piece(piece_len); in.read(reinterpret_cast<char*>(std::data(ret)), std::size(ret)))
+
+    auto const filename = torrent_file();
+    auto const fd = tr_sys_file_open(filename.c_str(), TR_SYS_FILE_READ, 0);
+    if (fd == TR_BAD_SYS_FILE)
     {
-        return ret;
+        return {};
     }
 
-    return {};
+    auto ret = tr_metadata_piece(piece_len);
+    auto total_read = uint64_t{};
+    while (total_read < std::size(ret))
+    {
+        auto n_read = uint64_t{};
+        if (!tr_sys_file_read_at(
+                fd,
+                std::data(ret) + total_read,
+                std::size(ret) - total_read,
+                static_cast<uint64_t>(offset_in_file) + total_read,
+                &n_read) ||
+            n_read == 0U)
+        {
+            tr_sys_file_close(fd);
+            return {};
+        }
+        total_read += n_read;
+    }
+
+    tr_sys_file_close(fd);
+    return ret;
 }
 
 bool tr_torrent::use_metainfo_from_file(tr_torrent_metainfo const* metainfo, char const* filename_in, tr_error* error)

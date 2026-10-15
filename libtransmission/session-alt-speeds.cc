@@ -8,8 +8,6 @@
 #include <ctime>
 #include <utility>
 
-#include <fmt/chrono.h>
-
 #include "libtransmission/transmission.h"
 
 #include "libtransmission/log.h"

@@ -23,7 +23,6 @@
 #include <android/log.h>
 #endif
 
-#include <fmt/chrono.h>
 #include <fmt/format.h>
 
 #include <small/map.hpp>
@@ -206,32 +205,72 @@ void tr_logFreeQueue(tr_log_message* freeme)
 
 std::string_view tr_logGetTimeStr(std::chrono::system_clock::time_point const now, char* const buf, size_t const buflen)
 {
+    if (buflen == 0U)
+    {
+        return {};
+    }
+
     auto* walk = buf;
+    auto remaining = buflen;
+    auto const append = [&walk, &remaining](auto format, auto&&... args)
+    {
+        if (remaining == 0U)
+        {
+            return;
+        }
+
+        auto const result = fmt::format_to_n(walk, remaining - 1U, format, std::forward<decltype(args)>(args)...);
+        auto const written = std::min(static_cast<size_t>(result.size), remaining - 1U);
+        walk += written;
+        remaining -= written;
+        *walk = '\0';
+    };
+
     auto const now_time_t = std::chrono::system_clock::to_time_t(now);
     auto const now_tm = *std::localtime(&now_time_t);
-    static bool constexpr HasTmGmtoff = HasTmGmtoffV<std::tm>;
-    static auto constexpr Fmt = HasTmGmtoff ? "{0:%FT%R:}{1:%S}{0:%z}"sv : "{0:%FT%R:}{1:%S}"sv;
-    walk = fmt::format_to_n(walk, buflen, Fmt, now_tm, std::chrono::time_point_cast<std::chrono::milliseconds>(now)).out;
+    auto millis_in_minute = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 60000;
+    if (millis_in_minute < 0)
+    {
+        millis_in_minute += 60000;
+    }
+    auto const seconds = static_cast<int>(millis_in_minute / 1000);
+    auto const millis = static_cast<int>(millis_in_minute % 1000);
+
+    append(
+        "{:04d}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}.{:03d}",
+        now_tm.tm_year + 1900,
+        now_tm.tm_mon + 1,
+        now_tm.tm_mday,
+        now_tm.tm_hour,
+        now_tm.tm_min,
+        seconds,
+        millis);
+
+    if constexpr (HasTmGmtoffV<std::tm>)
+    {
+        auto offset = static_cast<long long>(now_tm.tm_gmtoff);
+        auto const sign = offset < 0 ? '-' : '+';
+        if (offset < 0)
+        {
+            offset = -offset;
+        }
+        append("{:c}{:02d}{:02d}", sign, static_cast<int>(offset / 3600), static_cast<int>((offset / 60) % 60));
+    }
 #ifdef _WIN32
-    if (auto tz_info = TIME_ZONE_INFORMATION{}; GetTimeZoneInformation(&tz_info) != TIME_ZONE_ID_INVALID)
+    else if (auto tz_info = TIME_ZONE_INFORMATION{}; GetTimeZoneInformation(&tz_info) != TIME_ZONE_ID_INVALID)
     {
         // https://learn.microsoft.com/en-us/windows/win32/api/timezoneapi/nf-timezoneapi-gettimezoneinformation
         // All translations between UTC time and local time are based on the following formula:
         //     UTC = local time + bias
         // The bias is the difference, in minutes, between UTC time and local time.
         auto const offset = tz_info.Bias < 0 ? -tz_info.Bias : tz_info.Bias;
-        walk = fmt::format_to_n(
-                   walk,
-                   buflen - (walk - buf),
-                   "{:c}{:02d}{:02d}",
-                   tz_info.Bias < 0 ? '+' : '-',
-                   offset / 60,
-                   offset % 60)
-                   .out;
+        append("{:c}{:02d}{:02d}", tz_info.Bias < 0 ? '+' : '-', offset / 60, offset % 60);
     }
 #endif
+
     return { buf, static_cast<size_t>(walk - buf) };
 }
+
 
 std::string_view tr_logGetTimeStr(char* buf, size_t buflen)
 {

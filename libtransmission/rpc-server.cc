@@ -28,7 +28,6 @@
 #include <event2/http.h>
 #include <event2/listener.h>
 
-#include <fmt/chrono.h>
 #include <fmt/format.h>
 
 #include <libdeflate.h>
@@ -273,8 +272,27 @@ void send_simple_response(struct evhttp_request* req, int code, char const* text
 
 void add_time_header(struct evkeyvalq* headers, char const* key, time_t now)
 {
-    // RFC 2616 says this must follow RFC 1123's date format, so use gmtime instead of localtime
-    evhttp_add_header(headers, key, fmt::format("{:%a %b %d %T %Y%n}", fmt::gmtime(now)).c_str());
+    // RFC 2616 says this must follow RFC 1123's date format, so use gmtime instead of localtime.
+    // Keep the names explicitly in English so this stays locale-independent, just like fmt's
+    // non-localized chrono formatting, without pulling the C++ chrono/locale formatter runtime.
+    auto const tm = *std::gmtime(&now);
+    static constexpr std::array<std::string_view, 7> Weekdays = { "Sun"sv, "Mon"sv, "Tue"sv, "Wed"sv,
+                                                                  "Thu"sv, "Fri"sv, "Sat"sv };
+    static constexpr std::array<std::string_view, 12> Months = { "Jan"sv, "Feb"sv, "Mar"sv, "Apr"sv,
+                                                                 "May"sv, "Jun"sv, "Jul"sv, "Aug"sv,
+                                                                 "Sep"sv, "Oct"sv, "Nov"sv, "Dec"sv };
+    auto const weekday = 0 <= tm.tm_wday && tm.tm_wday < static_cast<int>(std::size(Weekdays)) ? Weekdays[tm.tm_wday] : "???"sv;
+    auto const month = 0 <= tm.tm_mon && tm.tm_mon < static_cast<int>(std::size(Months)) ? Months[tm.tm_mon] : "???"sv;
+    auto const value = fmt::format(
+        "{} {} {:02d} {:02d}:{:02d}:{:02d} {:04d}\n",
+        weekday,
+        month,
+        tm.tm_mday,
+        tm.tm_hour,
+        tm.tm_min,
+        tm.tm_sec,
+        tm.tm_year + 1900);
+    evhttp_add_header(headers, key, value.c_str());
 }
 
 void serve_file(struct evhttp_request* req, tr_rpc_server const* server, std::string_view filename)

@@ -6,9 +6,9 @@
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <clocale>
 #include <cstdint>
 #include <cstdio> /* printf */
-#include <iostream>
 #include <iterator> /* std::back_inserter */
 #include <memory>
 #include <string_view>
@@ -738,23 +738,25 @@ bool tr_daemon::parse_args(int argc, char const* const* argv, bool* dump_setting
             }
             else
             {
-                std::cerr << fmt::format(fmt::runtime(_("Couldn't parse log level '{level}'")), fmt::arg("level", optstr))
-                          << std::endl;
+                auto const message = fmt::format(
+                    fmt::runtime(_("Couldn't parse log level '{level}'")),
+                    fmt::arg("level", optstr));
+                std::fprintf(stderr, "%s\n", message.c_str());
             }
             break;
 
         case 811:
-            std::cerr << "WARN: --log-error is deprecated. Use --log-level=error" << std::endl;
+            std::fputs("WARN: --log-error is deprecated. Use --log-level=error\n", stderr);
             map->insert_or_assign(TR_KEY_message_level, TR_LOG_ERROR);
             break;
 
         case 812:
-            std::cerr << "WARN: --log-info is deprecated. Use --log-level=info" << std::endl;
+            std::fputs("WARN: --log-info is deprecated. Use --log-level=info\n", stderr);
             map->insert_or_assign(TR_KEY_message_level, TR_LOG_INFO);
             break;
 
         case 813:
-            std::cerr << "WARN: --log-debug is deprecated. Use --log-level=debug" << std::endl;
+            std::fputs("WARN: --log-debug is deprecated. Use --log-level=debug\n", stderr);
             map->insert_or_assign(TR_KEY_message_level, TR_LOG_DEBUG);
             break;
 
@@ -1086,7 +1088,13 @@ int tr_main(int argc, char* argv[])
 {
     tr_lib_init();
 
+#ifdef TR_EMBEDDED_SIZE_OPTIMIZATIONS
+    // Preserve the process locale for libc-facing code without instantiating the much heavier
+    // global C++ iostream locale machinery. This is called before worker threads are started.
+    std::setlocale(LC_ALL, "");
+#else
     tr_locale_set_global("");
+#endif
 
     auto foreground = bool{};
     auto ret = int{};

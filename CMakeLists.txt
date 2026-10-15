@@ -56,6 +56,7 @@ set(PSL_MINIMUM 0.21.1)
 set(QT_MINIMUM 5.15)
 
 option(ENABLE_DAEMON "Build daemon" ON)
+option(ENABLE_EMBEDDED_SIZE_OPTIMIZATIONS "Optimize daemon/libtransmission for small static embedded builds without disabling protocol features" OFF)
 tr_auto_option(ENABLE_GTK "Build GTK client" AUTO)
 tr_auto_option(ENABLE_QT "Build Qt client" AUTO)
 tr_auto_option(ENABLE_MAC "Build Mac client" AUTO)
@@ -86,6 +87,26 @@ tr_auto_option(WITH_INOTIFY "Enable inotify support (on systems that support it)
 tr_auto_option(WITH_KQUEUE "Enable kqueue support (on systems that support it)" AUTO)
 tr_auto_option(WITH_APPINDICATOR "Use appindicator for system tray icon in GTK client (GTK+ 3 only)" AUTO)
 tr_auto_option(WITH_SYSTEMD "Add support for systemd startup notification (on systems that support it)" AUTO)
+
+if(ENABLE_EMBEDDED_SIZE_OPTIMIZATIONS AND ENABLE_NLS)
+    message(FATAL_ERROR "ENABLE_EMBEDDED_SIZE_OPTIMIZATIONS requires ENABLE_NLS=OFF")
+endif()
+
+if(ENABLE_EMBEDDED_SIZE_OPTIMIZATIONS AND BUILD_SHARED_LIBS)
+    message(FATAL_ERROR "ENABLE_EMBEDDED_SIZE_OPTIMIZATIONS requires BUILD_SHARED_LIBS=OFF")
+endif()
+
+# ExternalProject dependencies inherit CMAKE_{C,CXX}_FLAGS. Give their
+# individual functions/data their own ELF sections so the final static daemon's
+# --gc-sections can discard code that is not referenced. This is layout-only
+# and does not change runtime behavior.
+if(ENABLE_EMBEDDED_SIZE_OPTIMIZATIONS AND CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    string(APPEND CMAKE_C_FLAGS " -ffunction-sections -fdata-sections")
+endif()
+
+if(ENABLE_EMBEDDED_SIZE_OPTIMIZATIONS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    string(APPEND CMAKE_CXX_FLAGS " -ffunction-sections -fdata-sections")
+endif()
 
 set(TR_NAME ${PROJECT_NAME})
 
@@ -558,6 +579,22 @@ if(ENABLE_UTP)
         TARGET libutp::libutp
         CMAKE_ARGS
             -DLIBUTP_SHARED:BOOL=OFF)
+endif()
+
+if(ENABLE_EMBEDDED_SIZE_OPTIMIZATIONS AND TARGET libutp AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(libutp PRIVATE
+        -ffunction-sections
+        -fdata-sections
+        -fexceptions
+        -frtti
+        -fvisibility=hidden
+        -fvisibility-inlines-hidden
+        -fno-semantic-interposition
+        $<$<CONFIG:MinSizeRel>:-Oz>)
+
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(libutp PRIVATE -fipa-pta -flto-partition=one)
+    endif()
 endif()
 
 tr_add_external_auto_library(B64 libb64 b64

@@ -12,14 +12,10 @@
 #include <cstdlib> // getenv()
 #include <cstring> /* strerror() */
 #include <ctime>
-#include <exception>
-#include <iostream>
 #include <iterator> // for std::back_inserter
-#include <locale>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <stdexcept> // std::runtime_error
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -38,7 +34,7 @@
 #endif
 
 #define UTF_CPP_CPLUSPLUS 201703L
-#include <utf8.h>
+#include <utf8/unchecked.h>
 
 #include <curl/curl.h>
 
@@ -78,48 +74,6 @@ Config::Units<StorageUnits> Config::storage{ Config::Base::Kilo, "B"sv, "kB"sv, 
 } // namespace libtransmission::Values
 
 // ---
-
-#if defined(_WIN32) && defined(__clang_analyzer__)
-// See https://github.com/llvm/llvm-project/issues/44701
-#define WORKAROUND_CLANG_TIDY_GH44701
-#endif
-
-std::optional<std::locale> tr_locale_set_global(char const* locale_name) noexcept
-{
-#ifndef WORKAROUND_CLANG_TIDY_GH44701
-    try
-#endif
-    {
-        return tr_locale_set_global(std::locale{ locale_name });
-    }
-#ifndef WORKAROUND_CLANG_TIDY_GH44701
-    catch (std::runtime_error const&)
-    {
-        return {};
-    }
-#endif
-}
-
-std::optional<std::locale> tr_locale_set_global(std::locale const& locale) noexcept
-{
-#ifndef WORKAROUND_CLANG_TIDY_GH44701
-    try
-#endif
-    {
-        auto old_locale = std::locale::global(locale);
-
-        std::cout.imbue(std::locale{});
-        std::cerr.imbue(std::locale{});
-
-        return old_locale;
-    }
-#ifndef WORKAROUND_CLANG_TIDY_GH44701
-    catch (std::exception const&)
-    {
-        return {};
-    }
-#endif
-}
 
 // ---
 
@@ -556,15 +510,27 @@ std::string tr_strpercent(double x)
 {
     if (x < 5.0)
     {
+#ifdef TR_EMBEDDED_SIZE_OPTIMIZATIONS
+        return fmt::format("{:.2f}", tr_truncd(x, 2));
+#else
         return fmt::format("{:.2Lf}", tr_truncd(x, 2));
+#endif
     }
 
     if (x < 100.0)
     {
+#ifdef TR_EMBEDDED_SIZE_OPTIMIZATIONS
+        return fmt::format("{:.1f}", tr_truncd(x, 1));
+#else
         return fmt::format("{:.1Lf}", tr_truncd(x, 1));
+#endif
     }
 
+#ifdef TR_EMBEDDED_SIZE_OPTIMIZATIONS
+    return fmt::format("{:.0f}", x);
+#else
     return fmt::format("{:.0Lf}", x);
+#endif
 }
 
 std::string tr_strratio(double ratio, std::string_view const none, std::string_view const infinity)

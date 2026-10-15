@@ -30,6 +30,31 @@ target_include_directories(${TR_NAME}-daemon SYSTEM
     PRIVATE
         $<$<BOOL:${WITH_SYSTEMD}>:${SYSTEMD_INCLUDE_DIRS}>)
 
+if(ENABLE_EMBEDDED_SIZE_OPTIMIZATIONS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_definitions(${TR_NAME}-daemon PRIVATE TR_EMBEDDED_SIZE_OPTIMIZATIONS FMT_USE_LOCALE=0)
+
+    target_compile_options(${TR_NAME}-daemon PRIVATE
+        -ffunction-sections
+        -fdata-sections
+        -fexceptions
+        -frtti
+        -fvisibility=hidden
+        -fvisibility-inlines-hidden
+        -fno-semantic-interposition
+        $<$<CONFIG:MinSizeRel>:-Oz>)
+
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(${TR_NAME}-daemon PRIVATE -fipa-pta -flto-partition=one)
+        target_link_options(${TR_NAME}-daemon PRIVATE -flto-partition=one)
+    endif()
+
+    if(UNIX AND NOT APPLE)
+        target_link_options(${TR_NAME}-daemon PRIVATE
+            -Wl,--gc-sections
+            -Wl,--build-id=none)
+    endif()
+endif()
+
 target_link_libraries(${TR_NAME}-daemon
     PRIVATE
         ${TR_NAME}
