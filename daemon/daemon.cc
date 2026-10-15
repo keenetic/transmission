@@ -970,12 +970,14 @@ int tr_daemon::start([[maybe_unused]] bool foreground)
     }
 
 #ifdef HAVE_SYSLOG
-
+#ifdef HAVE_NDM
+    openlog(MyName, LOG_CONS | LOG_PID, LOG_DAEMON);
+#else
     if (!foreground)
     {
         openlog(MyName, LOG_CONS | LOG_PID, LOG_DAEMON);
     }
-
+#endif
 #endif
 
     /* Create new timer event to report daemon status */
@@ -1044,13 +1046,16 @@ CLEANUP:
 
     /* shutdown */
 #ifdef HAVE_SYSLOG
-
+#ifdef HAVE_NDM
+    syslog(LOG_INFO, "%s", "Closing session");
+    closelog();
+#else
     if (!foreground)
     {
         syslog(LOG_INFO, "%s", "Closing session");
         closelog();
     }
-
+#endif
 #endif
 
     /* cleanup */
@@ -1081,10 +1086,14 @@ bool tr_daemon::init(int argc, char const* const argv[], bool* foreground, int* 
         return false;
     }
 
+#ifdef HAVE_NDM
+    log_stream_ = stderr;
+#else
     if (*foreground && log_stream_ == nullptr)
     {
         log_stream_ = stderr;
     }
+#endif
 
     if (dumpSettings)
     {
