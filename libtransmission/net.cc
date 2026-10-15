@@ -177,6 +177,23 @@ void tr_netSetDiffServ([[maybe_unused]] tr_socket_t s, [[maybe_unused]] int tos,
     }
 }
 
+void tr_netSetMark(tr_socket_t const socket, uint32_t const mark)
+{
+#if defined(SO_MARK) && !defined(_WIN32)
+    if (mark == 0U)
+    {
+        return;
+    }
+    if (setsockopt(socket, SOL_SOCKET, SO_MARK, reinterpret_cast<void const*>(&mark), sizeof(mark)) == -1)
+    {
+        tr_logAddInfo(fmt::format("Can't set SO_MARK '{}': {}", mark, tr_net_strerror(sockerrno)));
+    }
+#else
+    (void)socket;
+    (void)mark;
+#endif
+}
+
 void tr_netSetCongestionControl([[maybe_unused]] tr_socket_t s, [[maybe_unused]] char const* algorithm)
 {
 #ifdef TCP_CONGESTION
@@ -256,6 +273,10 @@ tr_socket_t tr_net_open_peer_socket(tr_session* session, tr_socket_address const
         return TR_BAD_SOCKET;
     }
 
+#ifdef HAVE_NDM
+    tr_netSetMark(s, session->socketMark());
+#endif
+
     // seeds don't need a big read buffer, so make it smaller
     if (client_is_seed)
     {
@@ -316,7 +337,7 @@ tr_socket_t tr_net_open_peer_socket(tr_session* session, tr_socket_address const
 
 namespace
 {
-tr_socket_t tr_netBindTCPImpl(tr_address const& addr, tr_port port, bool suppress_msgs, int* err_out)
+tr_socket_t tr_netBindTCPImpl(tr_address const& addr, tr_port port, bool suppress_msgs, uint32_t socket_mark, int* err_out)
 {
     TR_ASSERT(addr.is_valid());
 
@@ -333,6 +354,12 @@ tr_socket_t tr_netBindTCPImpl(tr_address const& addr, tr_port port, bool suppres
         tr_net_close_socket(fd);
         return TR_BAD_SOCKET;
     }
+
+#ifdef HAVE_NDM
+    tr_netSetMark(fd, socket_mark);
+#else
+    (void)socket_mark;
+#endif
 
     int optval = 1;
     (void)setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<char const*>(&optval), sizeof(optval));
@@ -403,10 +430,10 @@ tr_socket_t tr_netBindTCPImpl(tr_address const& addr, tr_port port, bool suppres
 }
 } // namespace
 
-tr_socket_t tr_netBindTCP(tr_address const& addr, tr_port port, bool suppress_msgs)
+tr_socket_t tr_netBindTCP(tr_address const& addr, tr_port port, bool suppress_msgs, uint32_t socket_mark)
 {
     int unused = 0;
-    return tr_netBindTCPImpl(addr, port, suppress_msgs, &unused);
+    return tr_netBindTCPImpl(addr, port, suppress_msgs, socket_mark, &unused);
 }
 
 std::optional<std::pair<tr_socket_address, tr_socket_t>> tr_netAccept(tr_session* session, tr_socket_t listening_sockfd)
@@ -431,6 +458,9 @@ std::optional<std::pair<tr_socket_address, tr_socket_t>> tr_netAccept(tr_session
         tr_net_close_socket(sockfd);
         return {};
     }
+#ifdef HAVE_NDM
+    tr_netSetMark(sockfd, session->socketMark());
+#endif
 
     return std::pair{ *addrport, sockfd };
 }

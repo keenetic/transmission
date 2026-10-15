@@ -316,6 +316,9 @@ private:
         {
             return false;
         }
+#ifdef HAVE_NDM
+        tr_netSetMark(sock, mediator_.socket_mark());
+#endif
 
         if (evutil_make_socket_nonblocking(sock) == -1)
         {

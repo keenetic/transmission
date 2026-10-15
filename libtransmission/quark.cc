@@ -321,6 +321,7 @@ auto constexpr MyStatic = std::array<std::string_view, TR_N_KEYS>{
     "main_window_y"sv, // gtk app, qt app
     "manualAnnounceTime"sv, // rpc
     "manual_announce_time"sv, // rpc
+    "markdata"sv, // daemon, tr_session::Settings
     "max-peers"sv, // .resume
     "maxConnectedPeers"sv, // rpc
     "max_connected_peers"sv, // rpc

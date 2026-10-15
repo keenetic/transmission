@@ -47,6 +47,8 @@ public:
 
         [[nodiscard]] virtual bool allowsLPD() const = 0;
 
+        [[nodiscard]] virtual uint32_t socket_mark() const { return 0U; }
+
         [[nodiscard]] virtual std::vector<TorrentInfo> torrents() const = 0;
 
         [[nodiscard]] virtual libtransmission::TimerMaker& timerMaker() = 0;

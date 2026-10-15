@@ -169,6 +169,11 @@ public:
         {
             return time(nullptr);
         }
+
+        [[nodiscard]] virtual uint32_t socket_mark() const
+        {
+            return 0U;
+        }
     };
 
     // Note that tr_web does no management of the `mediator` reference.

@@ -95,7 +95,7 @@ private:
     {
     public:
         using IncomingCallback = void (*)(tr_socket_t, void*);
-        BoundSocket(struct event_base* base, tr_address const& addr, tr_port port, IncomingCallback cb, void* cb_data);
+        BoundSocket(struct event_base* base, tr_address const& addr, tr_port port, uint32_t socket_mark, IncomingCallback cb, void* cb_data);
         BoundSocket(BoundSocket&&) = delete;
         BoundSocket(BoundSocket const&) = delete;
         BoundSocket operator=(BoundSocket&&) = delete;
@@ -267,6 +267,9 @@ private:
         [[nodiscard]] size_t clamp(int torrent_id, size_t byte_count) const override;
         [[nodiscard]] std::optional<std::string> proxyUrl() const override;
         [[nodiscard]] time_t now() const override;
+#ifdef HAVE_NDM
+        [[nodiscard]] uint32_t socket_mark() const override { return session_->socketMark(); }
+#endif
         // runs the tr_web::fetch response callback in the libtransmission thread
         void run(tr_web::FetchDoneFunc&& func, tr_web::FetchResponse&& response) const override;
 
@@ -296,6 +299,9 @@ private:
         {
             return session_.allowsLPD();
         }
+#ifdef HAVE_NDM
+        [[nodiscard]] uint32_t socket_mark() const override { return session_.socketMark(); }
+#endif
 
         [[nodiscard]] libtransmission::TimerMaker& timerMaker() override
         {
@@ -343,6 +349,9 @@ private:
         {
             return session_.timerMaker();
         }
+#ifdef HAVE_NDM
+        [[nodiscard]] uint32_t socket_mark() const override { return session_.socketMark(); }
+#endif
 
     private:
         tr_session& session_;
@@ -459,6 +468,9 @@ public:
         size_t cache_size_mbytes = 4U;
         size_t download_queue_size = 5U;
         size_t idle_seeding_limit_minutes = 30U;
+#ifdef HAVE_NDM
+        uint32_t peer_socket_mark = 0U;
+#endif
         size_t peer_limit_global = TrDefaultPeerLimitGlobal;
         size_t peer_limit_per_torrent = TrDefaultPeerLimitTorrent;
         size_t queue_stalled_minutes = 30U;
@@ -529,6 +541,9 @@ public:
             Field<&Settings::incomplete_dir_enabled>{ TR_KEY_incomplete_dir_enabled },
             Field<&Settings::lpd_enabled>{ TR_KEY_lpd_enabled },
             Field<&Settings::log_level>{ TR_KEY_message_level },
+#ifdef HAVE_NDM
+            Field<&Settings::peer_socket_mark>{ TR_KEY_mark_data },
+#endif
             Field<&Settings::peer_congestion_algorithm>{ TR_KEY_peer_congestion_algorithm },
             Field<&Settings::peer_limit_global>{ TR_KEY_peer_limit_global },
             Field<&Settings::peer_limit_per_torrent>{ TR_KEY_peer_limit_per_torrent },
@@ -768,6 +783,15 @@ public:
     [[nodiscard]] bool useRpcWhitelist() const;
 
     // peer networking
+
+    [[nodiscard]] constexpr uint32_t socketMark() const noexcept
+    {
+#ifdef HAVE_NDM
+        return settings_.peer_socket_mark;
+#else
+        return 0U;
+#endif
+    }
 
     [[nodiscard]] constexpr auto const& peerCongestionAlgorithm() const noexcept
     {

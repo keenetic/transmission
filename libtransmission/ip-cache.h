@@ -51,6 +51,8 @@ public:
         }
 
         [[nodiscard]] virtual libtransmission::TimerMaker& timer_maker() = 0;
+
+        [[nodiscard]] virtual uint32_t socket_mark() const { return 0U; }
     };
 
     static std::shared_ptr<tr_ip_cache> create(Mediator& mediator);

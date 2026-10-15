@@ -96,6 +96,25 @@ tr_variant from_int64(int64_t const& val)
 
 // ---
 
+bool to_uint32(tr_variant const& src, uint32_t* tgt)
+{
+    if (auto const val = src.value_if<int64_t>();
+        val && *val >= 0 && static_cast<uint64_t>(*val) <= std::numeric_limits<uint32_t>::max())
+    {
+        *tgt = static_cast<uint32_t>(*val);
+        return true;
+    }
+
+    return false;
+}
+
+tr_variant from_uint32(uint32_t const& val)
+{
+    return static_cast<int64_t>(val);
+}
+
+// ---
+
 auto constexpr EncryptionKeys = Lookup<tr_encryption_mode, 3U>{ {
     { "required", TR_ENCRYPTION_REQUIRED },
     { "preferred", TR_ENCRYPTION_PREFERRED },
@@ -562,6 +581,7 @@ void Converters::ensure_default_converters()
             Converters::add(to_preferred_transport, from_preferred_transport);
             Converters::add(to_size_t, from_size_t);
             Converters::add(to_string, from_string);
+            Converters::add(to_uint32, from_uint32);
             Converters::add(to_uint64, from_uint64);
             Converters::add(to_verify_added_mode, from_verify_added_mode);
         });

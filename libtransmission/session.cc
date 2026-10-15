@@ -422,11 +422,12 @@ tr_session::BoundSocket::BoundSocket(
     struct event_base* evbase,
     tr_address const& addr,
     tr_port port,
+    uint32_t socket_mark,
     IncomingCallback cb,
     void* cb_data)
     : cb_{ cb }
     , cb_data_{ cb_data }
-    , socket_{ tr_netBindTCP(addr, port, false) }
+    , socket_{ tr_netBindTCP(addr, port, false, socket_mark) }
     , ev_{ event_new(evbase, socket_, EV_READ | EV_PERSIST, &BoundSocket::onCanRead, this) }
 {
     if (!is_valid_socket(socket_))
@@ -877,14 +878,14 @@ void tr_session::setSettings(tr_session::Settings&& settings_in, bool force)
         if (auto const& val = new_settings.bind_address_ipv4; force || port_changed || val != old_settings.bind_address_ipv4)
         {
             auto const addr = bind_address(TR_AF_INET);
-            bound_ipv4_.emplace(event_base(), addr, local_peer_port_, &tr_session::onIncomingPeerConnection, this);
+            bound_ipv4_.emplace(event_base(), addr, local_peer_port_, socketMark(), &tr_session::onIncomingPeerConnection, this);
             addr_changed = true;
         }
 
         if (auto const& val = new_settings.bind_address_ipv6; force || port_changed || val != old_settings.bind_address_ipv6)
         {
             auto const addr = bind_address(TR_AF_INET6);
-            bound_ipv6_.emplace(event_base(), addr, local_peer_port_, &tr_session::onIncomingPeerConnection, this);
+            bound_ipv6_.emplace(event_base(), addr, local_peer_port_, socketMark(), &tr_session::onIncomingPeerConnection, this);
             addr_changed = true;
         }
     }

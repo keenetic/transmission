@@ -619,7 +619,9 @@ private:
 
 struct tr_session;
 
-tr_socket_t tr_netBindTCP(tr_address const& addr, tr_port port, bool suppress_msgs);
+tr_socket_t tr_netBindTCP(tr_address const& addr, tr_port port, bool suppress_msgs, uint32_t socket_mark = 0U);
+
+void tr_netSetMark(tr_socket_t socket, uint32_t mark);
 
 [[nodiscard]] std::optional<std::pair<tr_socket_address, tr_socket_t>> tr_netAccept(
     tr_session* session,

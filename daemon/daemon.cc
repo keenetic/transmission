@@ -88,7 +88,7 @@ char constexpr Usage[] = "Transmission " LONG_VERSION_STRING
                          "Usage: transmission-daemon [options]";
 
 using Arg = tr_option::Arg;
-auto constexpr Options = std::array<tr_option, 49>{ {
+auto constexpr Options = std::array<tr_option, 50>{ {
     { 'a', "allowed", "Allowed IP addresses. (Default: " TR_DEFAULT_RPC_WHITELIST ")", "a", Arg::Required, "<list>" },
     { 'b', "blocklist", "Enable peer blocklists", "b", Arg::None, nullptr },
     { 'B', "no-blocklist", "Disable peer blocklists", "B", Arg::None, nullptr },
@@ -102,6 +102,7 @@ auto constexpr Options = std::array<tr_option, 49>{ {
     { 'f', "foreground", "Run in the foreground instead of daemonizing", "f", Arg::None, nullptr },
     { 'g', "config-dir", "Where to look for configuration files", "g", Arg::Required, "<path>" },
     { 'p', "port", "RPC port (Default: " TR_DEFAULT_RPC_PORT_STR ")", "p", Arg::Required, "<port>" },
+    { 'Q', "markdata", "Socket mark", "Q", Arg::Required, "<mark>" },
     { 's', "script", "Feedback script path", "s", Arg::Required, "<path>" },
     { 't', "auth", "Require authentication", "t", Arg::None, nullptr },
     { 'T', "no-auth", "Don't require authentication", "T", Arg::None, nullptr },
@@ -664,6 +665,15 @@ bool tr_daemon::parse_args(int argc, char const* const* argv, bool* dump_setting
             {
                 map->insert_or_assign(TR_KEY_rpc_port, *rpc_port);
             }
+            break;
+
+        case 'Q':
+#ifdef HAVE_NDM
+            if (auto const mark = tr_num_parse<uint32_t>(optstr); mark)
+            {
+                map->insert_or_assign(TR_KEY_mark_data, *mark);
+            }
+#endif
             break;
 
         case 's':

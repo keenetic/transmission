@@ -173,6 +173,9 @@ tr_session::tr_udp_core::tr_udp_core(tr_session& session, tr_port udp_port)
     }
     else if (auto sock = socket(PF_INET, SOCK_DGRAM, 0); is_valid_socket(sock))
     {
+#ifdef HAVE_NDM
+        tr_netSetMark(sock, session_.socketMark());
+#endif
         (void)evutil_make_listen_socket_reuseable(sock);
 
         auto const addr = session_.bind_address(TR_AF_INET);
@@ -219,6 +222,9 @@ tr_session::tr_udp_core::tr_udp_core(tr_session& session, tr_port udp_port)
     }
     else if (auto sock = socket(PF_INET6, SOCK_DGRAM, 0); is_valid_socket(sock))
     {
+#ifdef HAVE_NDM
+        tr_netSetMark(sock, session_.socketMark());
+#endif
         (void)evutil_make_listen_socket_reuseable(sock);
         (void)tr_make_listen_socket_ipv6only(sock);
 

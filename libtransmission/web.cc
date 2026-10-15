@@ -39,6 +39,7 @@
 #include "libtransmission/crypto-utils.h"
 #endif
 #include "libtransmission/log.h"
+#include "libtransmission/net.h"
 #include "libtransmission/tr-assert.h"
 #include "libtransmission/utils.h"
 #include "libtransmission/web.h"
@@ -555,6 +556,9 @@ public:
         {
             (void)setsockopt(fd, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<char const*>(&*buf), sizeof(*buf));
         }
+#ifdef HAVE_NDM
+        tr_netSetMark(fd, task->impl.mediator.socket_mark());
+#endif
 
         // return nonzero if this function encountered an error
         return 0;
