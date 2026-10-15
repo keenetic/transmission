@@ -173,6 +173,7 @@ auto constexpr MyStatic = std::array<std::string_view, TR_N_KEYS>{
     "eta"sv, // rpc
     "etaIdle"sv, // rpc
     "eta_idle"sv, // rpc
+    "feedback-path"sv, // daemon, tr_session::Settings
     "fields"sv, // rpc
     "file-count"sv, // rpc
     "fileStats"sv, // rpc

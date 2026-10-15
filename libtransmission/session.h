@@ -484,6 +484,9 @@ public:
         std::string blocklist_url = "http://www.example.com/blocklist";
         std::string default_trackers_str;
         std::string download_dir = tr_getDefaultDownloadDir();
+#ifdef HAVE_NDM
+        std::string feedback_path;
+#endif
         std::string incomplete_dir = tr_getDefaultDownloadDir();
         std::string peer_congestion_algorithm;
         std::string script_torrent_added_filename;
@@ -514,6 +517,9 @@ public:
             Field<&Settings::default_trackers_str>{ TR_KEY_default_trackers },
             Field<&Settings::dht_enabled>{ TR_KEY_dht_enabled },
             Field<&Settings::download_dir>{ TR_KEY_download_dir },
+#ifdef HAVE_NDM
+            Field<&Settings::feedback_path>{ TR_KEY_feedback_path },
+#endif
             Field<&Settings::download_queue_enabled>{ TR_KEY_download_queue_enabled },
             Field<&Settings::download_queue_size>{ TR_KEY_download_queue_size },
             Field<&Settings::encryption_mode>{ TR_KEY_encryption },
@@ -653,6 +659,13 @@ public:
     {
         return settings().download_dir;
     }
+
+#ifdef HAVE_NDM
+    [[nodiscard]] constexpr auto const& feedbackPath() const noexcept
+    {
+        return settings().feedback_path;
+    }
+#endif
 
     void setDownloadDir(std::string_view dir)
     {

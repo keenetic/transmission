@@ -55,6 +55,10 @@
 #include "libtransmission/web-utils.h"
 #include "libtransmission/web.h"
 
+#ifdef HAVE_NDM
+#include <ndm/feedback.h>
+#endif
+
 using namespace std::literals;
 using namespace libtransmission::Values;
 
@@ -2152,6 +2156,26 @@ using SessionGetter = std::function<tr_variant(tr_session const& src)>;
 using SessionSetter = std::function<void(tr_session& tgt, tr_variant const&, ErrorInfo& err)>;
 using SessionAccessors = std::pair<SessionGetter, SessionSetter>;
 
+#ifdef HAVE_NDM
+bool ndm_send_peer_port_feedback(tr_session const& session, tr_port const port)
+{
+    auto const& path = session.feedbackPath();
+    if (std::empty(path))
+    {
+        return false;
+    }
+
+    char const* const argv[] = { path.c_str(), nullptr };
+    if (!ndm_feedback(NDM_FEEDBACK_TIMEOUT_MSEC, argv, "peer-port=%u\n", port.host()))
+    {
+        tr_logAddError("Unable to send peer-port feedback"s);
+        return false;
+    }
+
+    return true;
+}
+#endif
+
 [[nodiscard]] auto& session_accessors()
 {
     static auto map = small::max_size_map<tr_quark, SessionAccessors, 64U>{};
@@ -2478,10 +2502,27 @@ using SessionAccessors = std::pair<SessionGetter, SessionSetter>;
     map.try_emplace(
         TR_KEY_peer_port,
         [](tr_session const& src) -> tr_variant { return src.advertisedPeerPort().host(); },
-        [](tr_session& tgt, tr_variant const& src, ErrorInfo& /*err*/)
+        [](tr_session& tgt, tr_variant const& src, ErrorInfo& err)
         {
             if (auto const val = src.value_if<int64_t>())
             {
+#ifdef HAVE_NDM
+                if (*val < 1024 || *val > 65535)
+                {
+                    err = { JsonRpc::Error::INVALID_PARAMS, "peer port must be between 1024 and 65535"s };
+                    return;
+                }
+                auto const port = tr_port::from_host(static_cast<uint16_t>(*val));
+                if (port == tgt.localPeerPort())
+                {
+                    return;
+                }
+                if (!ndm_send_peer_port_feedback(tgt, port))
+                {
+                    err = { JsonRpc::Error::SYSTEM_ERROR, "unable to send peer-port feedback"s };
+                    return;
+                }
+#endif
                 tr_sessionSetPeerPort(&tgt, *val);
             }
         });
@@ -2489,6 +2530,9 @@ using SessionAccessors = std::pair<SessionGetter, SessionSetter>;
     map.try_emplace(
         TR_KEY_peer_port_random_on_start,
         [](tr_session const& src) -> tr_variant { return src.isPortRandom(); },
+#ifdef HAVE_NDM
+        [](tr_session& /*tgt*/, tr_variant const& /*src*/, ErrorInfo& /*err*/) {});
+#else
         [](tr_session& tgt, tr_variant const& src, ErrorInfo& /*err*/)
         {
             if (auto const val = src.value_if<bool>())
@@ -2496,6 +2540,7 @@ using SessionAccessors = std::pair<SessionGetter, SessionSetter>;
                 tr_sessionSetPeerPortRandomOnStart(&tgt, *val);
             }
         });
+#endif
 
     map.try_emplace(
         TR_KEY_pex_enabled,
