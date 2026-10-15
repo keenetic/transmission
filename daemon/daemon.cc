@@ -971,7 +971,7 @@ int tr_daemon::start([[maybe_unused]] bool foreground)
 
 #ifdef HAVE_SYSLOG
 #ifdef HAVE_NDM
-    openlog(MyName, LOG_CONS | LOG_PID, LOG_DAEMON);
+    openlog(MyName, LOG_CONS, LOG_DAEMON);
 #else
     if (!foreground)
     {
