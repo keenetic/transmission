@@ -208,6 +208,9 @@ public:
 
     std::unique_ptr<libtransmission::Timer> start_retry_timer;
     libtransmission::evhelpers::evhttp_unique_ptr httpd;
+#ifdef HAVE_NDM
+    libtransmission::evhelpers::evhttp_unique_ptr local_rpc_httpd;
+#endif
     tr_session* const session;
 
     size_t login_attempts_ = 0U;

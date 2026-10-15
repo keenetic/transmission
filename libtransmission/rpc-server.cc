@@ -76,6 +76,7 @@ auto constexpr NdmLocalAuthTimeout = 500;
 auto constexpr NdmCoreCacheMaxSize = 4096;
 auto constexpr NdmLocalUsernameSize = 32U;
 auto constexpr NdmLocalPasswordSize = 32U;
+auto constexpr NdmLocalRpcSocket = "unix:/var/run/transmission.rpc.sock"sv;
 #endif
 
 /* The maximum size of a unix socket path is defined per-platform based on sockaddr_un.sun_path.
@@ -745,6 +746,38 @@ void handle_request(struct evhttp_request* req, void* arg)
     }
 }
 
+#ifdef HAVE_NDM
+void handle_local_rpc_request(struct evhttp_request* req, void* arg)
+{
+    if (req == nullptr)
+    {
+        return;
+    }
+
+    auto* server = static_cast<tr_rpc_server*>(arg);
+    auto* const output_headers = evhttp_request_get_output_headers(req);
+    evhttp_add_header(output_headers, "Server", MY_REALM);
+    add_clickjacking_prevention_headers(output_headers);
+
+    if (evhttp_request_get_command(req) == EVHTTP_REQ_OPTIONS)
+    {
+        send_simple_response(req, HTTP_OK);
+        return;
+    }
+
+    auto const uri = std::string_view{ evhttp_request_get_uri(req) };
+    auto const location = tr_strv_starts_with(uri, server->url()) ? uri.substr(std::size(server->url())) : ""sv;
+    if (tr_strv_starts_with(location, "rpc"sv))
+    {
+        handle_rpc(req, server);
+    }
+    else
+    {
+        send_simple_response(req, HTTP_NOTFOUND, evhttp_request_get_uri(req));
+    }
+}
+#endif
+
 auto constexpr ServerStartRetryCount = 10;
 auto constexpr ServerStartRetryDelayIncrement = 5s;
 auto constexpr ServerStartRetryMaxDelay = 60s;
@@ -912,6 +945,23 @@ void start_server(tr_rpc_server* server)
     else
     {
 #ifdef HAVE_NDM
+        if (!server->local_rpc_httpd)
+        {
+            auto* const local_httpd = evhttp_new(base);
+            evhttp_set_allowed_methods(local_httpd, EVHTTP_REQ_GET | EVHTTP_REQ_POST | EVHTTP_REQ_OPTIONS);
+            if (bindUnixSocket(base, local_httpd, NdmLocalRpcSocket.data(), 0777))
+            {
+                evhttp_set_gencb(local_httpd, handle_local_rpc_request, server);
+                server->local_rpc_httpd.reset(local_httpd);
+                tr_logAddInfo(fmt::format("Listening for trusted local RPC requests on '{}'", NdmLocalRpcSocket));
+            }
+            else
+            {
+                evhttp_free(local_httpd);
+                tr_logAddError(fmt::format("Couldn't bind trusted local RPC socket '{}'", NdmLocalRpcSocket));
+            }
+        }
+
         server->ndm_core_ = ndm_core_open("transmission/ci", NdmLocalAuthTimeout, NdmCoreCacheMaxSize);
 #endif
         evhttp_set_gencb(httpd, handle_request, server);
@@ -932,6 +982,11 @@ void stop_server(tr_rpc_server* server)
 
     rpc_server_start_retry_cancel(server);
 #ifdef HAVE_NDM
+    if (server->local_rpc_httpd)
+    {
+        server->local_rpc_httpd.reset();
+        unlink(NdmLocalRpcSocket.data() + std::size(TrUnixSocketPrefix));
+    }
     if (server->ndm_core_ != nullptr)
     {
         ndm_core_close(&server->ndm_core_);
