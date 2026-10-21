@@ -142,8 +142,6 @@ struct MetainfoHandler final : public transmission::benc::BasicHandler<MaxBencDe
 
         if (state_ == State::FileTree) // bittorrent v2 format
         {
-            // v2, ignore for today
-            tr_logAddInfo("'file tree' is ignored");
             state_ = State::UsePath;
         }
         else if (state_ == State::Files) // bittorrent v1 format
@@ -519,6 +517,7 @@ private:
         tm_.info_hash_str_ = tr_sha1_to_string(tm_.info_hash_);
         tm_.info_hash2_ = hash2;
         tm_.info_hash2_str_ = tr_sha256_to_string(tm_.info_hash2_);
+        tm_.has_info_hash2_ = tm_.has_v2_metadata();
         tm_.info_dict_size_ = std::size(info_dict_benc);
         return true;
     }

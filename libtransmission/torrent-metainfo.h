@@ -149,6 +149,11 @@ public:
         return is_v2_;
     }
 
+    [[nodiscard]] TR_CONSTEXPR20 bool is_hybrid() const noexcept
+    {
+        return has_v1_metadata() && has_v2_metadata();
+    }
+
     [[nodiscard]] constexpr auto const& date_created() const noexcept
     {
         return date_created_;

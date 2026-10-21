@@ -172,6 +172,12 @@ std::string tr_magnet_metainfo::magnet() const
 {
     auto buf = tr_urlbuf{ "magnet:?xt=urn:btih:"sv, info_hash_string() };
 
+    if (has_info_hash2())
+    {
+        buf += "&xt=urn:btmh:1220"sv;
+        buf += info_hash2_string().sv();
+    }
+
     if (!std::empty(name_))
     {
         buf += "&dn="sv;
@@ -271,6 +277,8 @@ bool tr_magnet_metainfo::parseMagnet(std::string_view magnet_link, tr_error* err
             if (auto const hash = parseHash2(value.substr(std::size(ValPrefix2))); hash)
             {
                 this->info_hash2_ = *hash;
+                this->info_hash2_str_ = tr_sha256_to_string(this->info_hash2_);
+                this->has_info_hash2_ = true;
             }
         }
     }

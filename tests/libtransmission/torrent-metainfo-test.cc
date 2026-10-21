@@ -93,6 +93,22 @@ TEST_F(TorrentMetainfoTest, bucket)
     }
 }
 
+
+TEST_F(TorrentMetainfoTest, hybridV2Metadata)
+{
+    auto const benc = tr_base64_decode(
+        "ZDQ6aW5mb2Q5OmZpbGUgdHJlZWQ1OmEudHh0ZDA6ZDY6bGVuZ3RoaTRlMTE6cGllY2VzIHJvb3QzMjoAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eH2VlZTU6ZmlsZXNsZDY6bGVuZ3RoaTRlNDpwYXRobDU6YS50eHRlZWUxMjptZXRhIHZlcnNpb25pMmU0Om5hbWUxMTpoeWJyaWQtdGVzdDEyOnBpZWNlIGxlbmd0aGkxNjM4NGU2OnBpZWNlczIwOgABAgMEBQYHCAkKCwwNDg8QERITZTEyOnBpZWNlIGxheWVyc2QzMjoAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHzMyOh8eHRwbGhkYFxYVFBMSERAPDg0MCwoJCAcGBQQDAgEAZWU=");
+
+    auto metainfo = tr_torrent_metainfo{};
+    EXPECT_TRUE(metainfo.parse_benc(benc));
+    EXPECT_TRUE(metainfo.has_v1_metadata());
+    EXPECT_TRUE(metainfo.has_v2_metadata());
+    EXPECT_TRUE(metainfo.is_hybrid());
+    EXPECT_TRUE(metainfo.has_info_hash2());
+    EXPECT_EQ("e45da4d0bd22dfa402d175d448cd1cb8c554e02d9f1d073199658d0f84824244"sv, metainfo.info_hash2_string().sv());
+    EXPECT_NE(std::string::npos, metainfo.magnet().find("xt=urn:btmh:1220e45da4d0bd22dfa402d175d448cd1cb8c554e02d9f1d073199658d0f84824244"));
+}
+
 TEST_F(TorrentMetainfoTest, parseBencFuzzRegressions)
 {
     static auto constexpr Tests = std::array<std::string_view, 1>{

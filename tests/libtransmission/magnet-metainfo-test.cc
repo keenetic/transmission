@@ -92,6 +92,21 @@ TEST_F(MagnetMetainfoTest, magnetParse)
     }
 }
 
+
+TEST_F(MagnetMetainfoTest, hybridMagnetRoundtrip)
+{
+    auto constexpr HashV1 = "d2354010a3ca4ade5b7427bb093a62a3899ff381"sv;
+    auto constexpr HashV2 = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"sv;
+    auto const uri = std::string{ "magnet:?xt=urn:btih:" } + std::string{ HashV1 } + "&xt=urn:btmh:1220" +
+        std::string{ HashV2 } + "&dn=hybrid";
+
+    auto mm = tr_magnet_metainfo{};
+    EXPECT_TRUE(mm.parseMagnet(uri));
+    EXPECT_TRUE(mm.has_info_hash2());
+    EXPECT_EQ(HashV2, mm.info_hash2_string().sv());
+    EXPECT_NE(std::string::npos, mm.magnet().find("xt=urn:btmh:1220" + std::string{ HashV2 }));
+}
+
 TEST_F(MagnetMetainfoTest, parseMagnetFuzzRegressions)
 {
     static auto constexpr Tests = std::array<std::string_view, 1>{

@@ -65,6 +65,11 @@ public:
         return info_hash2_str_;
     }
 
+    [[nodiscard]] constexpr bool has_info_hash2() const noexcept
+    {
+        return has_info_hash2_;
+    }
+
     void set_name(std::string_view name);
 
     void add_webseed(std::string_view webseed);
@@ -77,4 +82,5 @@ protected:
     tr_sha1_string info_hash_str_;
     tr_sha256_string info_hash2_str_;
     std::string name_;
+    bool has_info_hash2_ = false;
 };
