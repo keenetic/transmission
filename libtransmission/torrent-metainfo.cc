@@ -69,6 +69,9 @@ struct MetainfoHandler final : public transmission::benc::BasicHandler<MaxBencDe
     tr_tracker_tier_t tier_ = 0;
     tr_pathbuf file_subpath_;
     int64_t file_length_ = 0;
+    bool has_file_tree_ = false;
+    bool has_meta_version_ = false;
+    bool has_piece_layers_ = false;
 
     enum class State : uint8_t
     {
@@ -87,7 +90,14 @@ struct MetainfoHandler final : public transmission::benc::BasicHandler<MaxBencDe
 
     bool Key(std::string_view key, Context const& context) override
     {
-        return BasicHandler::Key(key, context);
+        if (!BasicHandler::Key(key, context))
+        {
+            return false;
+        }
+
+        has_file_tree_ = has_file_tree_ || pathIs(InfoKey, FileTreeKey);
+        has_piece_layers_ = has_piece_layers_ || pathIs(PieceLayersKey);
+        return true;
     }
 
     bool StartDict(Context const& context) override
@@ -237,8 +247,7 @@ struct MetainfoHandler final : public transmission::benc::BasicHandler<MaxBencDe
         }
         else if (pathIs(InfoKey, MetaVersionKey))
         {
-            // currently unused. TODO support for bittorrent v2
-            // TODO https://github.com/transmission/transmission/issues/458
+            has_meta_version_ = true;
             tm_.is_v2_ = value == 2;
         }
         else if (
@@ -479,9 +488,24 @@ private:
             return false;
         }
 
+        if ((has_meta_version_ || has_file_tree_) && !tm_.has_v2_metadata())
+        {
+            context.error.set(EINVAL, "invalid 'meta version'");
+            return false;
+        }
+
+        if (tm_.has_v2_metadata() && !has_file_tree_)
+        {
+            context.error.set(EINVAL, "missing 'file tree'");
+            return false;
+        }
+
         if (!tm_.has_v1_metadata())
         {
-            context.error.set(EINVAL, "missing v1 metadata");
+            context.error.set(
+                EINVAL,
+                tm_.has_v2_metadata() ? "v2-only torrent is not supported; a hybrid torrent must contain v1 pieces"
+                                      : "missing v1 metadata");
             return false;
         }
 
@@ -524,6 +548,12 @@ private:
 
     bool finish(Context const& context)
     {
+        if (has_piece_layers_ && !tm_.has_v2_metadata())
+        {
+            context.error.set(EINVAL, "invalid 'meta version'");
+            return false;
+        }
+
         // bittorrent 1.0 spec
         // https://www.bittorrent.org/beps/bep_0003.html
         //
